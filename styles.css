@@ -247,7 +247,8 @@ canvas {
 }
 
 .skin-menu.is-hidden,
-.secret-menu.is-hidden {
+.secret-menu.is-hidden,
+.multiplayer-menu.is-hidden {
   display: none;
 }
 
@@ -288,6 +289,87 @@ canvas {
   border-radius: 8px;
   background: rgba(255, 209, 92, 0.14);
   color: var(--gold);
+  font-weight: 900;
+}
+
+.multiplayer-menu {
+  width: min(370px, 100%);
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.multiplayer-toolbar {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  gap: 8px;
+}
+
+.multiplayer-toolbar input {
+  min-width: 0;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #141820;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+.multiplayer-toolbar input:focus {
+  outline: 3px solid rgba(89, 212, 255, 0.45);
+  outline-offset: 1px;
+}
+
+.multiplayer-status {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.player-list {
+  max-height: 190px;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.player-row {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  text-align: left;
+}
+
+.player-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-coins {
+  display: block;
+  color: var(--gold);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+}
+
+.gift-button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 209, 92, 0.42);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgba(255, 209, 92, 0.12);
+  color: var(--gold);
+  font-size: 0.75rem;
   font-weight: 900;
 }
 

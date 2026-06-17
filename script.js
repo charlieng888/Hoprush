@@ -29,6 +29,12 @@ const skinButtons = document.querySelectorAll("[data-skin]");
 const secretMenuButton = document.querySelector("#secretMenuButton");
 const secretMenu = document.querySelector("#secretMenu");
 const secretStatus = document.querySelector("#secretStatus");
+const multiplayerMenuButton = document.querySelector("#multiplayerMenuButton");
+const multiplayerMenu = document.querySelector("#multiplayerMenu");
+const multiplayerStatus = document.querySelector("#multiplayerStatus");
+const playerNameInput = document.querySelector("#playerNameInput");
+const playerList = document.querySelector("#playerList");
+const refreshPlayersButton = document.querySelector("#refreshPlayersButton");
 const freezeGunBuyButton = document.querySelector("#freezeGunBuyButton");
 const freezeGunShopButton = document.querySelector("#freezeGunShopButton");
 const freezeButton = document.querySelector("#freezeButton");
@@ -50,6 +56,7 @@ const maxRoadSection = 4;
 const freezeGunCost = 100;
 const iceCubeCost = 1;
 const freezeDurationMs = 5000;
+const giftAmount = 10;
 const skins = {
   lime: { body: "#f4f7fb", cap: "#8ee35f", eye: "#101216" },
   berry: { body: "#fff3fb", cap: "#ff6fba", eye: "#21101a" },
@@ -99,6 +106,10 @@ hasFreezeGun = claimPrivateFreezeGunGrant();
 let iceCubes = loadIceCubes();
 iceCubes += claimPrivateIceCubeGrant();
 let freezeTimerMs = 0;
+let playerId = loadPlayerId();
+let playerName = loadPlayerName();
+let onlinePlayers = [];
+let multiplayerBusy = false;
 const doNotClickSound = new Audio("sounds/do-not-click.mp3");
 doNotClickSound.volume = 0.8;
 const doNotClickSoundTwo = new Audio("sounds/do-not-click-2.mp3");
@@ -111,6 +122,7 @@ resetGame();
 draw();
 updateSkinButtons();
 updateFreezeControls();
+playerNameInput.value = playerName;
 
 window.roadHopStart = activateStart;
 window.roadHopPause = togglePause;
@@ -596,6 +608,136 @@ function saveWalletCoins(value) {
   }
 }
 
+function loadPlayerId() {
+  try {
+    let id = window.localStorage.getItem("road-hop-rush-player-id");
+    if (!id) {
+      id = window.crypto && window.crypto.randomUUID
+        ? window.crypto.randomUUID()
+        : `player-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      window.localStorage.setItem("road-hop-rush-player-id", id);
+    }
+    return id;
+  } catch (error) {
+    return `player-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function loadPlayerName() {
+  try {
+    return window.localStorage.getItem("road-hop-rush-player-name") || `Player ${playerId.slice(-4)}`;
+  } catch (error) {
+    return `Player ${playerId.slice(-4)}`;
+  }
+}
+
+function savePlayerName(value) {
+  playerName = String(value || "Player").replace(/[^a-zA-Z0-9 _-]/g, "").trim().slice(0, 18) || "Player";
+  playerNameInput.value = playerName;
+  try {
+    window.localStorage.setItem("road-hop-rush-player-name", playerName);
+  } catch (error) {
+    // The current session still keeps the chosen name when storage is blocked.
+  }
+}
+
+async function multiplayerRequest(payload) {
+  const response = await fetch("/api/multiplayer", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Multiplayer unavailable");
+  return result;
+}
+
+async function multiplayerHeartbeat() {
+  if (window.location.protocol === "file:") {
+    multiplayerStatus.textContent = "Multiplayer works on the Netlify website";
+    return;
+  }
+  if (multiplayerBusy) return;
+  multiplayerBusy = true;
+  try {
+    const result = await multiplayerRequest({
+      action: "heartbeat",
+      playerId,
+      name: playerName,
+      coins: walletCoins,
+    });
+    onlinePlayers = result.players || [];
+    applyReceivedGifts(result.gifts || []);
+    renderOnlinePlayers();
+    multiplayerStatus.textContent = `${onlinePlayers.length} player${onlinePlayers.length === 1 ? "" : "s"} online`;
+  } catch (error) {
+    multiplayerStatus.textContent = error.message;
+  } finally {
+    multiplayerBusy = false;
+  }
+}
+
+function applyReceivedGifts(gifts) {
+  if (!gifts.length) return;
+  const total = gifts.reduce((sum, gift) => sum + Math.max(0, Number(gift.amount) || 0), 0);
+  walletCoins += total;
+  saveWalletCoins(walletCoins);
+  updateHud();
+  const lastGift = gifts[gifts.length - 1];
+  updateStatus(gameState, `${lastGift.from} gave you ${total} coins`);
+}
+
+function renderOnlinePlayers() {
+  playerList.replaceChildren();
+  onlinePlayers.forEach((onlinePlayer) => {
+    const row = document.createElement("div");
+    row.className = "player-row";
+    const details = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "player-name";
+    name.textContent = onlinePlayer.id === playerId ? `${onlinePlayer.name} (You)` : onlinePlayer.name;
+    const coins = document.createElement("span");
+    coins.className = "player-coins";
+    coins.textContent = `${onlinePlayer.coins} coins`;
+    details.append(name, coins);
+    row.append(details);
+
+    if (onlinePlayer.id !== playerId) {
+      const giftButton = document.createElement("button");
+      giftButton.className = "gift-button";
+      giftButton.type = "button";
+      giftButton.textContent = `Gift ${giftAmount}`;
+      giftButton.disabled = walletCoins < giftAmount;
+      giftButton.addEventListener("click", () => giftCoins(onlinePlayer));
+      row.append(giftButton);
+    }
+    playerList.append(row);
+  });
+}
+
+async function giftCoins(recipient) {
+  if (walletCoins < giftAmount || multiplayerBusy) return;
+  multiplayerBusy = true;
+  try {
+    await multiplayerRequest({
+      action: "gift",
+      fromId: playerId,
+      toId: recipient.id,
+      amount: giftAmount,
+    });
+    walletCoins -= giftAmount;
+    saveWalletCoins(walletCoins);
+    updateHud();
+    multiplayerStatus.textContent = `Sent ${giftAmount} coins to ${recipient.name}`;
+    await multiplayerRequest({ action: "heartbeat", playerId, name: playerName, coins: walletCoins });
+    renderOnlinePlayers();
+  } catch (error) {
+    multiplayerStatus.textContent = error.message;
+  } finally {
+    multiplayerBusy = false;
+  }
+}
+
 function loadFreezeGunOwnership() {
   try {
     return window.localStorage.getItem("road-hop-rush-freeze-gun") === "owned";
@@ -834,6 +976,7 @@ const hops = {
 };
 
 document.addEventListener("keydown", (event) => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
   if (event.code === "Space") {
     event.preventDefault();
     togglePause();
@@ -889,6 +1032,19 @@ skinMenuButton.addEventListener("click", () => {
 secretMenuButton.addEventListener("click", () => {
   secretMenu.classList.toggle("is-hidden");
 });
+
+multiplayerMenuButton.addEventListener("click", () => {
+  multiplayerMenu.classList.toggle("is-hidden");
+  if (!multiplayerMenu.classList.contains("is-hidden")) multiplayerHeartbeat();
+});
+
+playerNameInput.addEventListener("change", () => {
+  savePlayerName(playerNameInput.value);
+  multiplayerHeartbeat();
+});
+
+refreshPlayersButton.addEventListener("click", multiplayerHeartbeat);
+window.setInterval(multiplayerHeartbeat, 15_000);
 
 skinButtons.forEach((button) => {
   button.addEventListener("click", () => chooseSkin(button.dataset.skin));

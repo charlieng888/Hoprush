@@ -54,6 +54,7 @@
               <button class="primary-button" id="startButton" type="button" onclick="window.roadHopStart && window.roadHopStart(event)">Start</button>
               <button class="secondary-button" id="skinMenuButton" type="button">Skins</button>
               <button class="secondary-button" id="secretMenuButton" type="button">Secret</button>
+              <button class="secondary-button" id="multiplayerMenuButton" type="button">Multiplayer</button>
               <button class="danger-button" id="doNotClickButton" type="button">DO NOT CLICK</button>
               <button class="danger-button" id="doNotClickButtonTwo" type="button">DO NOT CLICK 2</button>
               <button class="danger-button" id="doNotClickButtonThree" type="button">DO NOT CLICK 3</button>
@@ -76,6 +77,14 @@
               <div class="secret-status" id="secretStatus">Freeze Gun: Locked | Ice Cubes: 0</div>
               <button class="secret-item" id="freezeGunBuyButton" type="button">Freeze Gun - 100 coins</button>
               <button class="shop-button" id="freezeGunShopButton" type="button">Ice Cube Ammo - 1 coin</button>
+            </div>
+            <div class="multiplayer-menu is-hidden" id="multiplayerMenu" aria-label="Multiplayer">
+              <div class="multiplayer-toolbar">
+                <input id="playerNameInput" maxlength="18" autocomplete="nickname" aria-label="Player name" placeholder="Your name" />
+                <button class="icon-button" id="refreshPlayersButton" type="button" aria-label="Refresh players" title="Refresh players">&#8635;</button>
+              </div>
+              <div class="multiplayer-status" id="multiplayerStatus">Connecting...</div>
+              <div class="player-list" id="playerList"></div>
             </div>
           </div>
         </div>
@@ -108,6 +117,6 @@
       </aside>
     </main>
 
-    <script src="script.js?v=37"></script>
+    <script src="script.js?v=38"></script>
   </body>
 </html>
