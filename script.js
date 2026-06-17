@@ -86,6 +86,11 @@ const laneTemplates = [
 let lanes = [];
 let player = { ...playerStart };
 let hopOffset = { x: 0, y: 0 };
+let playerScaleX = 1;
+let playerScaleY = 1;
+let playerLift = 0;
+let playerRotation = 0;
+let playerAnimationFrame = null;
 let score = 0;
 let runCoins = 0;
 let walletCoins = loadWalletCoins();
@@ -140,10 +145,12 @@ function startGame() {
 
 function resetGame() {
   cancelAnimationFrame(animationFrame);
+  cancelAnimationFrame(playerAnimationFrame);
   completedRows = 0;
   lanes = createLanes();
   player = { ...playerStart };
   hopOffset = { x: 0, y: 0 };
+  resetPlayerTransform();
   score = 0;
   runCoins = 0;
   bestRow = 0;
@@ -258,7 +265,7 @@ function hop(dx, dy) {
   const oldY = player.y;
   player = next;
   hopOffset = { x: oldX - player.x, y: oldY - player.y };
-  animateHop();
+  animateHop(dx);
   collectCoin();
   bestRow = Math.max(bestRow, completedRows + playerStart.y - player.y);
   score = Math.max(score, bestRow * 10 + runCoins * 25);
@@ -324,21 +331,29 @@ function countRoadRunFromTop() {
   return roadRun;
 }
 
-function animateHop() {
+function animateHop(horizontalDirection) {
+  cancelAnimationFrame(playerAnimationFrame);
   const start = performance.now();
-  const duration = 110;
+  const duration = 145;
+  const startOffset = { ...hopOffset };
   function frame(now) {
     const progress = Math.min(1, (now - start) / duration);
     const eased = 1 - Math.pow(1 - progress, 3);
-    hopOffset.x *= 1 - eased;
-    hopOffset.y *= 1 - eased;
+    const arc = Math.sin(progress * Math.PI);
+    hopOffset.x = startOffset.x * (1 - eased);
+    hopOffset.y = startOffset.y * (1 - eased);
+    playerLift = -arc * tile * 0.18;
+    playerScaleX = 1 - arc * 0.08;
+    playerScaleY = 1 + arc * 0.16;
+    playerRotation = horizontalDirection * arc * 0.08;
     if (progress < 1 && gameState === "running") {
-      requestAnimationFrame(frame);
+      playerAnimationFrame = requestAnimationFrame(frame);
     } else {
       hopOffset = { x: 0, y: 0 };
+      resetPlayerTransform();
     }
   }
-  requestAnimationFrame(frame);
+  playerAnimationFrame = requestAnimationFrame(frame);
 }
 
 function collectCoin() {
@@ -469,29 +484,79 @@ function drawPlayer() {
   const displayX = (player.x + hopOffset.x) * tile;
   const displayY = (player.y + hopOffset.y) * tile;
   const cx = displayX + tile / 2;
-  const cy = displayY + tile / 2;
+  const groundY = displayY + tile / 2;
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
   ctx.beginPath();
-  ctx.ellipse(cx, cy + tile * 0.24, tile * 0.24, tile * 0.09, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, groundY + tile * 0.24, tile * 0.24 * playerScaleX, tile * 0.09, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  ctx.save();
+  ctx.translate(cx, groundY + playerLift);
+  ctx.rotate(playerRotation);
+  ctx.scale(playerScaleX, playerScaleY);
   ctx.fillStyle = skin.body;
-  roundedRect(cx - tile * 0.23, cy - tile * 0.21, tile * 0.46, tile * 0.46, 8);
+  roundedRect(-tile * 0.23, -tile * 0.21, tile * 0.46, tile * 0.46, 8);
   ctx.fill();
   ctx.fillStyle = skin.cap;
-  roundedRect(cx - tile * 0.16, cy - tile * 0.31, tile * 0.32, tile * 0.18, 7);
+  roundedRect(-tile * 0.16, -tile * 0.31, tile * 0.32, tile * 0.18, 7);
   ctx.fill();
   ctx.fillStyle = skin.eye;
   ctx.beginPath();
-  ctx.arc(cx - tile * 0.09, cy - tile * 0.03, 3.5, 0, Math.PI * 2);
-  ctx.arc(cx + tile * 0.09, cy - tile * 0.03, 3.5, 0, Math.PI * 2);
+  ctx.arc(-tile * 0.09, -tile * 0.03, 3.5, 0, Math.PI * 2);
+  ctx.arc(tile * 0.09, -tile * 0.03, 3.5, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = "#101216";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(cx, cy + tile * 0.08, tile * 0.08, 0, Math.PI);
+  ctx.arc(0, tile * 0.08, tile * 0.08, 0, Math.PI);
   ctx.stroke();
+  ctx.restore();
+}
+
+function resetPlayerTransform() {
+  playerScaleX = 1;
+  playerScaleY = 1;
+  playerLift = 0;
+  playerRotation = 0;
+}
+
+function animatePlayerRecoil(intensity = 1) {
+  cancelAnimationFrame(playerAnimationFrame);
+  const start = performance.now();
+  const duration = 180;
+  function frame(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const impact = Math.sin(progress * Math.PI);
+    playerScaleX = 1 + impact * 0.22 * intensity;
+    playerScaleY = 1 - impact * 0.18 * intensity;
+    playerRotation = Math.sin(progress * Math.PI * 2) * 0.06 * intensity;
+    if (progress < 1 && gameState === "running") {
+      playerAnimationFrame = requestAnimationFrame(frame);
+    } else {
+      resetPlayerTransform();
+    }
+  }
+  playerAnimationFrame = requestAnimationFrame(frame);
+}
+
+function animatePlayerCrash() {
+  cancelAnimationFrame(playerAnimationFrame);
+  const start = performance.now();
+  const duration = 360;
+  function frame(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    playerScaleX = 1 + eased * 0.45;
+    playerScaleY = Math.max(0.3, 1 - eased * 0.7);
+    playerLift = eased * tile * 0.17;
+    playerRotation = eased * 0.35;
+    draw();
+    if (progress < 1) {
+      playerAnimationFrame = requestAnimationFrame(frame);
+    }
+  }
+  playerAnimationFrame = requestAnimationFrame(frame);
 }
 
 function roundedRect(x, y, width, height, radius) {
@@ -513,6 +578,7 @@ function isTree(x, y) {
 }
 
 function bump() {
+  animatePlayerRecoil(1);
   beep(140, 0.04, "square");
   noise(0.05, 0.035);
 }
@@ -557,6 +623,7 @@ function endGame(reason) {
   overlay.classList.add("is-visible");
   updateStatus("ended", "Game over");
   updateFreezeControls();
+  animatePlayerCrash();
   beep(120, 0.14, "sawtooth");
   noise(0.22, 0.055);
 }
@@ -901,6 +968,7 @@ function activateFreezeGun() {
   freezeTimerMs = freezeDurationMs;
   updateFreezeControls();
   updateStatus("running", "Cars frozen");
+  animatePlayerRecoil(0.65);
   beep(520, 0.08, "triangle");
   noise(0.28, 0.045);
 }
