@@ -27,6 +27,11 @@ function cleanId(value) {
   return /^[a-zA-Z0-9-]{8,64}$/.test(id) ? id : null;
 }
 
+function cleanRoomCode(value) {
+  const code = String(value || "PUBLIC").toUpperCase();
+  return code === "PUBLIC" || /^[A-Z0-9]{4,6}$/.test(code) ? code : null;
+}
+
 async function readState(store) {
   return (await store.get("state", { type: "json", consistency: "strong" })) || {
     players: {},
@@ -41,8 +46,9 @@ function removeOfflinePlayers(state, now) {
   }
 }
 
-function publicPlayers(state) {
+function publicPlayers(state, roomCode) {
   return Object.entries(state.players)
+    .filter(([, player]) => player.roomCode === roomCode)
     .map(([id, player]) => ({
       id,
       name: player.name,
@@ -53,14 +59,17 @@ function publicPlayers(state) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function updateRace(state, now) {
-  if (state.raceWinner && now - state.raceWinner.wonAt > 30_000) state.raceWinner = null;
-  const racers = publicPlayers(state).filter((player) => player.inRace);
-  if (!state.raceWinner && racers.length >= 2) {
-    const winner = racers.filter((player) => player.raceScore >= raceTarget).sort((a, b) => b.raceScore - a.raceScore)[0];
-    if (winner) state.raceWinner = { id: winner.id, name: winner.name, wonAt: now };
+function updateRace(state, roomCode, now) {
+  state.raceWinners ||= {};
+  if (state.raceWinners[roomCode] && now - state.raceWinners[roomCode].wonAt > 30_000) {
+    delete state.raceWinners[roomCode];
   }
-  return { target: raceTarget, racers, winner: state.raceWinner || null };
+  const racers = publicPlayers(state, roomCode).filter((player) => player.inRace);
+  if (!state.raceWinners[roomCode] && racers.length >= 2) {
+    const winner = racers.filter((player) => player.raceScore >= raceTarget).sort((a, b) => b.raceScore - a.raceScore)[0];
+    if (winner) state.raceWinners[roomCode] = { id: winner.id, name: winner.name, wonAt: now };
+  }
+  return { target: raceTarget, racers, winner: state.raceWinners[roomCode] || null };
 }
 
 export default async (request) => {
@@ -78,22 +87,27 @@ export default async (request) => {
   state.players ||= {};
   state.gifts ||= {};
   state.reactions ||= {};
+  state.raceWinners ||= {};
   const now = Date.now();
   removeOfflinePlayers(state, now);
 
   if (body.action === "list") {
-    return json({ players: publicPlayers(state), race: updateRace(state, now) });
+    const roomCode = cleanRoomCode(body.roomCode);
+    if (!roomCode) return json({ error: "Invalid room code" }, 400);
+    return json({ players: publicPlayers(state, roomCode), race: updateRace(state, roomCode, now) });
   }
 
   if (body.action === "heartbeat") {
     const playerId = cleanId(body.playerId);
-    if (!playerId) return json({ error: "Invalid player" }, 400);
+    const roomCode = cleanRoomCode(body.roomCode);
+    if (!playerId || !roomCode) return json({ error: "Invalid player or room" }, 400);
 
     state.players[playerId] = {
       name: cleanName(body.name),
       coins: Math.max(0, Math.floor(Number(body.coins) || 0)),
       inRace: Boolean(body.inRace),
       raceScore: Math.max(0, Math.floor(Number(body.raceScore) || 0)),
+      roomCode,
       lastSeen: now,
     };
 
@@ -101,20 +115,24 @@ export default async (request) => {
     const reactions = state.reactions[playerId] || [];
     delete state.gifts[playerId];
     delete state.reactions[playerId];
-    const race = updateRace(state, now);
+    const race = updateRace(state, roomCode, now);
     await store.setJSON("state", state);
-    return json({ players: publicPlayers(state), gifts, reactions, race });
+    return json({ players: publicPlayers(state, roomCode), gifts, reactions, race });
   }
 
   if (body.action === "gift") {
     const fromId = cleanId(body.fromId);
     const toId = cleanId(body.toId);
     const amount = Math.floor(Number(body.amount));
-    if (!fromId || !toId || fromId === toId || amount < 1 || amount > maxGift) {
+    const roomCode = cleanRoomCode(body.roomCode);
+    if (!fromId || !toId || !roomCode || fromId === toId || amount < 1 || amount > maxGift) {
       return json({ error: "Invalid gift" }, 400);
     }
     if (!state.players[fromId] || !state.players[toId]) {
       return json({ error: "Player is offline" }, 409);
+    }
+    if (state.players[fromId].roomCode !== roomCode || state.players[toId].roomCode !== roomCode) {
+      return json({ error: "Player is not in your room" }, 403);
     }
     if (state.players[fromId].coins < amount) {
       return json({ error: "Not enough coins" }, 409);
@@ -136,11 +154,15 @@ export default async (request) => {
     const fromId = cleanId(body.fromId);
     const toId = cleanId(body.toId);
     const message = String(body.message || "");
-    if (!fromId || !toId || fromId === toId || !allowedReactions.has(message)) {
+    const roomCode = cleanRoomCode(body.roomCode);
+    if (!fromId || !toId || !roomCode || fromId === toId || !allowedReactions.has(message)) {
       return json({ error: "Invalid reaction" }, 400);
     }
     if (!state.players[fromId] || !state.players[toId]) {
       return json({ error: "Player is offline" }, 409);
+    }
+    if (state.players[fromId].roomCode !== roomCode || state.players[toId].roomCode !== roomCode) {
+      return json({ error: "Player is not in your room" }, 403);
     }
     state.reactions[toId] ||= [];
     state.reactions[toId].push({ from: state.players[fromId].name, message, sentAt: now });

@@ -40,6 +40,12 @@ const multiplayerStatus = document.querySelector("#multiplayerStatus");
 const playerNameInput = document.querySelector("#playerNameInput");
 const playerList = document.querySelector("#playerList");
 const refreshPlayersButton = document.querySelector("#refreshPlayersButton");
+const createRoomButton = document.querySelector("#createRoomButton");
+const roomCodeInput = document.querySelector("#roomCodeInput");
+const joinRoomButton = document.querySelector("#joinRoomButton");
+const roomActive = document.querySelector("#roomActive");
+const activeRoomCode = document.querySelector("#activeRoomCode");
+const leaveRoomButton = document.querySelector("#leaveRoomButton");
 const raceButton = document.querySelector("#raceButton");
 const raceStatus = document.querySelector("#raceStatus");
 const freezeGunBuyButton = document.querySelector("#freezeGunBuyButton");
@@ -145,6 +151,7 @@ let multiplayerBusy = false;
 let raceMode = false;
 let raceStartScore = 0;
 let latestRace = null;
+let currentRoomCode = loadRoomCode();
 const doNotClickSound = new Audio("sounds/do-not-click.mp3");
 doNotClickSound.volume = 0.8;
 const doNotClickSoundTwo = new Audio("sounds/do-not-click-2.mp3");
@@ -161,6 +168,7 @@ updateDailyRewardButton();
 updateFreezeControls();
 renderRaceStatus();
 playerNameInput.value = playerName;
+renderRoomControls();
 
 window.roadHopStart = activateStart;
 window.roadHopPause = togglePause;
@@ -841,6 +849,75 @@ function savePlayerName(value) {
   }
 }
 
+function loadRoomCode() {
+  try {
+    return cleanRoomCode(window.localStorage.getItem("road-hop-rush-room-code"));
+  } catch (error) {
+    return "PUBLIC";
+  }
+}
+
+function cleanRoomCode(value) {
+  const code = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+  return code.length >= 4 ? code : "PUBLIC";
+}
+
+function saveRoomCode(code) {
+  currentRoomCode = cleanRoomCode(code);
+  try {
+    if (currentRoomCode === "PUBLIC") window.localStorage.removeItem("road-hop-rush-room-code");
+    else window.localStorage.setItem("road-hop-rush-room-code", currentRoomCode);
+  } catch (error) {
+    // The room remains active for this session when storage is blocked.
+  }
+}
+
+function generateRoomCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  const values = new Uint32Array(6);
+  if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(values);
+  else values.forEach((_, index) => { values[index] = Math.floor(Math.random() * alphabet.length); });
+  values.forEach((value) => { code += alphabet[value % alphabet.length]; });
+  return code;
+}
+
+function renderRoomControls() {
+  const isPrivate = currentRoomCode !== "PUBLIC";
+  roomActive.classList.toggle("is-hidden", !isPrivate);
+  activeRoomCode.textContent = isPrivate ? currentRoomCode : "";
+  createRoomButton.classList.toggle("is-hidden", isPrivate);
+  document.querySelector(".room-join-row").classList.toggle("is-hidden", isPrivate);
+}
+
+function enterRoom(code, created = false) {
+  const cleaned = cleanRoomCode(code);
+  if (cleaned === "PUBLIC") {
+    multiplayerStatus.textContent = "Enter a room code with at least 4 letters or numbers";
+    return;
+  }
+  saveRoomCode(cleaned);
+  roomCodeInput.value = "";
+  raceMode = false;
+  latestRace = null;
+  onlinePlayers = [];
+  renderRoomControls();
+  renderOnlinePlayers();
+  multiplayerStatus.textContent = created ? `Room ${cleaned} created - share this code` : `Joining room ${cleaned}...`;
+  multiplayerHeartbeat();
+}
+
+function leaveRoom() {
+  saveRoomCode("PUBLIC");
+  raceMode = false;
+  latestRace = null;
+  onlinePlayers = [];
+  renderRoomControls();
+  renderOnlinePlayers();
+  multiplayerStatus.textContent = "Returned to public lobby";
+  multiplayerHeartbeat();
+}
+
 async function multiplayerRequest(payload) {
   const response = await fetch("/api/multiplayer", {
     method: "POST",
@@ -867,6 +944,7 @@ async function multiplayerHeartbeat() {
       coins: walletCoins,
       inRace: raceMode,
       raceScore: raceMode ? Math.max(0, score - raceStartScore) : 0,
+      roomCode: currentRoomCode,
     });
     onlinePlayers = result.players || [];
     applyReceivedGifts(result.gifts || []);
@@ -874,7 +952,8 @@ async function multiplayerHeartbeat() {
     latestRace = result.race || null;
     renderOnlinePlayers();
     renderRaceStatus();
-    multiplayerStatus.textContent = `${onlinePlayers.length} player${onlinePlayers.length === 1 ? "" : "s"} online`;
+    const place = currentRoomCode === "PUBLIC" ? "public lobby" : `room ${currentRoomCode}`;
+    multiplayerStatus.textContent = `${onlinePlayers.length} player${onlinePlayers.length === 1 ? "" : "s"} in ${place}`;
   } catch (error) {
     multiplayerStatus.textContent = error.message;
   } finally {
@@ -961,7 +1040,7 @@ function renderOnlinePlayers() {
 
 async function sendReaction(recipient, message) {
   try {
-    await multiplayerRequest({ action: "reaction", fromId: playerId, toId: recipient.id, message });
+    await multiplayerRequest({ action: "reaction", fromId: playerId, toId: recipient.id, message, roomCode: currentRoomCode });
     multiplayerStatus.textContent = `Sent ${message} to ${recipient.name}`;
   } catch (error) {
     multiplayerStatus.textContent = error.message;
@@ -984,6 +1063,7 @@ async function giftCoins(recipient) {
       fromId: playerId,
       toId: recipient.id,
       amount: giftAmount,
+      roomCode: currentRoomCode,
     });
     walletCoins -= giftAmount;
     saveWalletCoins(walletCoins);
@@ -996,6 +1076,7 @@ async function giftCoins(recipient) {
       coins: walletCoins,
       inRace: raceMode,
       raceScore: raceMode ? Math.max(0, score - raceStartScore) : 0,
+      roomCode: currentRoomCode,
     });
     renderOnlinePlayers();
   } catch (error) {
@@ -1406,6 +1487,15 @@ playerNameInput.addEventListener("change", () => {
 });
 
 refreshPlayersButton.addEventListener("click", multiplayerHeartbeat);
+createRoomButton.addEventListener("click", () => enterRoom(generateRoomCode(), true));
+joinRoomButton.addEventListener("click", () => enterRoom(roomCodeInput.value));
+roomCodeInput.addEventListener("input", () => {
+  roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+});
+roomCodeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") enterRoom(roomCodeInput.value);
+});
+leaveRoomButton.addEventListener("click", leaveRoom);
 raceButton.addEventListener("click", toggleRaceMode);
 window.setInterval(multiplayerHeartbeat, 15_000);
 

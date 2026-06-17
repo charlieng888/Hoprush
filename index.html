@@ -113,6 +113,17 @@
                 <input id="playerNameInput" maxlength="18" autocomplete="nickname" aria-label="Player name" placeholder="Your name" />
                 <button class="icon-button" id="refreshPlayersButton" type="button" aria-label="Refresh players" title="Refresh players">&#8635;</button>
               </div>
+              <div class="room-controls">
+                <button class="shop-button" id="createRoomButton" type="button">Create Room</button>
+                <div class="room-join-row">
+                  <input id="roomCodeInput" maxlength="6" autocomplete="off" aria-label="Private room code" placeholder="ROOM CODE" />
+                  <button class="shop-button" id="joinRoomButton" type="button">Join</button>
+                </div>
+                <div class="room-active is-hidden" id="roomActive">
+                  <span>Room: <strong id="activeRoomCode"></strong></span>
+                  <button class="reaction-button" id="leaveRoomButton" type="button" title="Leave private room">Leave</button>
+                </div>
+              </div>
               <div class="multiplayer-status" id="multiplayerStatus">Connecting...</div>
               <div class="race-controls">
                 <button class="shop-button" id="raceButton" type="button">Join 300-point race</button>
@@ -151,6 +162,6 @@
       </aside>
     </main>
 
-    <script src="script.js?v=40"></script>
+    <script src="script.js?v=41"></script>
   </body>
 </html>

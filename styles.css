@@ -361,6 +361,67 @@ canvas {
   outline-offset: 1px;
 }
 
+.room-controls {
+  display: grid;
+  gap: 7px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.room-join-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px;
+  gap: 7px;
+}
+
+.room-join-row input {
+  min-width: 0;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #141820;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.room-active {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(89, 212, 255, 0.4);
+  border-radius: 8px;
+  padding: 5px 7px 5px 11px;
+  background: rgba(89, 212, 255, 0.1);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.room-active strong {
+  color: #59d4ff;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.room-active .reaction-button {
+  width: auto;
+  padding: 0 9px;
+}
+
+.room-active.is-hidden {
+  display: none;
+}
+
+.room-controls > .is-hidden,
+.room-join-row.is-hidden {
+  display: none;
+}
+
 .multiplayer-status {
   color: var(--muted);
   font-size: 0.78rem;
