@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Road Hop Rush</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="game-panel" aria-label="Road Hop Rush game">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Arcade crossing</p>
+            <h1>Road Hop Rush</h1>
+          </div>
+          <button class="icon-button" id="soundButton" type="button" aria-label="Toggle sound" title="Toggle sound">
+            <span aria-hidden="true">&#9834;</span>
+          </button>
+        </header>
+
+        <div class="hud" aria-live="polite">
+          <div class="metric">
+            <span>Score</span>
+            <strong id="score">0</strong>
+          </div>
+          <div class="metric">
+            <span>Best</span>
+            <strong id="bestScore">0</strong>
+          </div>
+          <div class="metric">
+            <span>Coins</span>
+            <strong id="coins">0</strong>
+          </div>
+          <div class="metric">
+            <span>Row</span>
+            <strong id="row">0</strong>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <canvas id="board" width="960" height="1280" aria-label="Crossing game board"></canvas>
+          <div class="overlay is-visible" id="overlay">
+            <p id="overlayKicker">Ready?</p>
+            <h2 id="overlayTitle">Hop the Grid</h2>
+            <div class="coin-balance">Coins: <span id="menuCoins">0</span></div>
+            <div class="menu-actions">
+              <button class="primary-button" id="startButton" type="button" onclick="window.roadHopStart && window.roadHopStart(event)">Start</button>
+              <button class="secondary-button" id="skinMenuButton" type="button">Skins</button>
+              <button class="secondary-button" id="secretMenuButton" type="button">Secret</button>
+              <button class="danger-button" id="doNotClickButton" type="button">DO NOT CLICK</button>
+              <button class="danger-button" id="doNotClickButtonTwo" type="button">DO NOT CLICK 2</button>
+              <button class="danger-button" id="doNotClickButtonThree" type="button">DO NOT CLICK 3</button>
+            </div>
+            <div class="skin-menu is-hidden" id="skinMenu" aria-label="Choose your skin">
+              <button class="skin-option" data-skin="lime" type="button" aria-label="Choose lime skin">
+                <span class="skin-preview lime"></span>
+              </button>
+              <button class="skin-option" data-skin="berry" type="button" aria-label="Choose berry skin">
+                <span class="skin-preview berry"></span>
+              </button>
+              <button class="skin-option" data-skin="sky" type="button" aria-label="Choose sky skin">
+                <span class="skin-preview sky"></span>
+              </button>
+              <button class="skin-option" data-skin="gold" type="button" aria-label="Choose gold skin">
+                <span class="skin-preview gold"></span>
+              </button>
+            </div>
+            <div class="secret-menu is-hidden" id="secretMenu" aria-label="Secret shop">
+              <div class="secret-status" id="secretStatus">Freeze Gun: Locked | Ice Cubes: 0</div>
+              <button class="secret-item" id="freezeGunBuyButton" type="button">Freeze Gun - 100 coins</button>
+              <button class="shop-button" id="freezeGunShopButton" type="button">Ice Cube Ammo - 1 coin</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="secondary-button" id="freezeButton" type="button">Freeze Gun x0</button>
+          <button class="secondary-button" id="pauseButton" type="button" onclick="window.roadHopPause && window.roadHopPause()">Pause</button>
+          <button class="secondary-button" id="restartButton" type="button" onclick="window.roadHopRestart && window.roadHopRestart()">Restart</button>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="Controls">
+        <div class="status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Waiting to start</span>
+        </div>
+
+        <div class="control-pad" aria-label="Touch controls">
+          <button class="pad-button up" data-hop="up" type="button" aria-label="Hop forward">&uarr;</button>
+          <button class="pad-button left" data-hop="left" type="button" aria-label="Hop left">&larr;</button>
+          <button class="pad-button right" data-hop="right" type="button" aria-label="Hop right">&rarr;</button>
+          <button class="pad-button down" data-hop="down" type="button" aria-label="Hop back">&darr;</button>
+        </div>
+
+        <div class="keys" aria-label="Keyboard controls">
+          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div>
+          <div><kbd>&uarr;</kbd><kbd>&larr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd></div>
+          <div><kbd>Space</kbd></div>
+        </div>
+      </aside>
+    </main>
+
+    <script src="script.js?v=37"></script>
+  </body>
+</html>
