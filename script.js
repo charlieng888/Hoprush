@@ -19,6 +19,7 @@ const bestScoreEl = document.querySelector("#bestScore");
 const coinsEl = document.querySelector("#coins");
 const menuCoinsEl = document.querySelector("#menuCoins");
 const rowEl = document.querySelector("#row");
+const effectBar = document.querySelector("#effectBar");
 const overlay = document.querySelector("#overlay");
 const overlayKicker = document.querySelector("#overlayKicker");
 const overlayTitle = document.querySelector("#overlayTitle");
@@ -26,6 +27,10 @@ const startButton = document.querySelector("#startButton");
 const skinMenuButton = document.querySelector("#skinMenuButton");
 const skinMenu = document.querySelector("#skinMenu");
 const skinButtons = document.querySelectorAll("[data-skin]");
+const mapMenuButton = document.querySelector("#mapMenuButton");
+const mapMenu = document.querySelector("#mapMenu");
+const mapButtons = document.querySelectorAll("[data-map]");
+const dailyRewardButton = document.querySelector("#dailyRewardButton");
 const secretMenuButton = document.querySelector("#secretMenuButton");
 const secretMenu = document.querySelector("#secretMenu");
 const secretStatus = document.querySelector("#secretStatus");
@@ -35,6 +40,8 @@ const multiplayerStatus = document.querySelector("#multiplayerStatus");
 const playerNameInput = document.querySelector("#playerNameInput");
 const playerList = document.querySelector("#playerList");
 const refreshPlayersButton = document.querySelector("#refreshPlayersButton");
+const raceButton = document.querySelector("#raceButton");
+const raceStatus = document.querySelector("#raceStatus");
 const freezeGunBuyButton = document.querySelector("#freezeGunBuyButton");
 const freezeGunShopButton = document.querySelector("#freezeGunShopButton");
 const freezeButton = document.querySelector("#freezeButton");
@@ -57,11 +64,24 @@ const freezeGunCost = 100;
 const iceCubeCost = 1;
 const freezeDurationMs = 5000;
 const giftAmount = 10;
+const raceTarget = 300;
+const dailyRewardCoins = 50;
 const skins = {
-  lime: { body: "#f4f7fb", cap: "#8ee35f", eye: "#101216" },
-  berry: { body: "#fff3fb", cap: "#ff6fba", eye: "#21101a" },
-  sky: { body: "#eefaff", cap: "#59d4ff", eye: "#0b2633" },
-  gold: { body: "#fff8dc", cap: "#ffd15c", eye: "#35230a" },
+  lime: { body: "#f4f7fb", cap: "#8ee35f", eye: "#101216", cost: 0 },
+  berry: { body: "#fff3fb", cap: "#ff6fba", eye: "#21101a", cost: 0 },
+  sky: { body: "#eefaff", cap: "#59d4ff", eye: "#0b2633", cost: 0 },
+  gold: { body: "#fff8dc", cap: "#ffd15c", eye: "#35230a", cost: 0 },
+  frog: { body: "#d8ffd8", cap: "#44c767", eye: "#102a18", cost: 50 },
+  chicken: { body: "#fff8e8", cap: "#ff865c", eye: "#3b170d", cost: 75 },
+  robot: { body: "#dce4ec", cap: "#a7b4c4", eye: "#102c3a", cost: 100 },
+  penguin: { body: "#f4f7fb", cap: "#26364a", eye: "#090f17", cost: 125 },
+};
+const mapThemes = {
+  meadow: { safe: "#3a8c56", grass: "#2f7849", road: "#252a33", river: "#1d5d7c", tree: "#2fa45c" },
+  snow: { safe: "#d7eef4", grass: "#b9dce5", road: "#3b414b", river: "#73b9d2", tree: "#5b9f8f" },
+  desert: { safe: "#d6b45f", grass: "#c99a46", road: "#4b4038", river: "#3a9bb7", tree: "#64943d" },
+  night: { safe: "#294d3a", grass: "#1d3b2b", road: "#171b25", river: "#193f66", tree: "#26724a" },
+  space: { safe: "#4b416d", grass: "#342d55", road: "#151322", river: "#314c86", tree: "#8b6fd1" },
 };
 
 const laneTemplates = [
@@ -111,10 +131,20 @@ hasFreezeGun = claimPrivateFreezeGunGrant();
 let iceCubes = loadIceCubes();
 iceCubes += claimPrivateIceCubeGrant();
 let freezeTimerMs = 0;
+let shieldCharges = 0;
+let shieldInvulnerableMs = 0;
+let magnetTimerMs = 0;
+let speedTimerMs = 0;
+let slowTrafficTimerMs = 0;
+let selectedMap = loadSelectedMap();
+let unlockedSkins = loadUnlockedSkins();
 let playerId = loadPlayerId();
 let playerName = loadPlayerName();
 let onlinePlayers = [];
 let multiplayerBusy = false;
+let raceMode = false;
+let raceStartScore = 0;
+let latestRace = null;
 const doNotClickSound = new Audio("sounds/do-not-click.mp3");
 doNotClickSound.volume = 0.8;
 const doNotClickSoundTwo = new Audio("sounds/do-not-click-2.mp3");
@@ -126,7 +156,10 @@ bestScoreEl.textContent = bestScore;
 resetGame();
 draw();
 updateSkinButtons();
+updateMapButtons();
+updateDailyRewardButton();
 updateFreezeControls();
+renderRaceStatus();
 playerNameInput.value = playerName;
 
 window.roadHopStart = activateStart;
@@ -152,11 +185,18 @@ function resetGame() {
   hopOffset = { x: 0, y: 0 };
   resetPlayerTransform();
   score = 0;
+  if (raceMode) raceStartScore = 0;
   runCoins = 0;
   bestRow = 0;
   freezeTimerMs = 0;
+  shieldCharges = 0;
+  shieldInvulnerableMs = 0;
+  magnetTimerMs = 0;
+  speedTimerMs = 0;
+  slowTrafficTimerMs = 0;
   updateHud();
   updateFreezeControls();
+  updateEffectBar();
   draw();
 }
 
@@ -166,7 +206,7 @@ function createLanes() {
 
 function createLane(template, y) {
   const speedFactor = 1 + Math.min(0.65, completedRows * 0.012);
-  const lane = { ...template, y, speed: template.speed ? template.speed * speedFactor : 0, actors: [], coins: [] };
+  const lane = { ...template, y, speed: template.speed ? template.speed * speedFactor : 0, actors: [], coins: [], powerups: [] };
   if (template.type === "road") {
     for (let x = -2; x < columns + 4; x += template.spacing) {
       lane.actors.push({
@@ -190,6 +230,13 @@ function createLane(template, y) {
   if (["grass", "safe"].includes(template.type) && y !== playerStart.y && Math.random() > 0.4) {
     lane.coins.push({ x: Math.floor(1 + Math.random() * (columns - 2)), collected: false });
   }
+  if (["grass", "safe"].includes(template.type) && y !== playerStart.y && Math.random() < 0.14) {
+    lane.powerups.push({
+      x: Math.floor(1 + Math.random() * (columns - 2)),
+      type: randomItem(["shield", "magnet", "speed", "slow"]),
+      collected: false,
+    });
+  }
 
   return lane;
 }
@@ -208,7 +255,8 @@ function update(delta) {
   lanes.forEach((lane) => {
     if (!["road", "river"].includes(lane.type)) return;
     if (lane.type === "road" && freezeTimerMs > 0) return;
-    const movement = (lane.speed / 1000) * delta * lane.direction;
+    const trafficFactor = lane.type === "road" && slowTrafficTimerMs > 0 ? 0.35 : 1;
+    const movement = (lane.speed / 1000) * delta * lane.direction * trafficFactor;
     lane.actors.forEach((actor) => {
       actor.x += movement;
       if (lane.direction > 0 && actor.x > columns + maxCarWidth) {
@@ -224,6 +272,12 @@ function update(delta) {
     freezeTimerMs = Math.max(0, freezeTimerMs - delta);
     updateFreezeControls();
   }
+  magnetTimerMs = Math.max(0, magnetTimerMs - delta);
+  speedTimerMs = Math.max(0, speedTimerMs - delta);
+  slowTrafficTimerMs = Math.max(0, slowTrafficTimerMs - delta);
+  shieldInvulnerableMs = Math.max(0, shieldInvulnerableMs - delta);
+  if (magnetTimerMs > 0) collectNearbyCoins();
+  updateEffectBar();
 
   const lane = lanes[player.y];
   if (lane.type === "river") {
@@ -267,9 +321,12 @@ function hop(dx, dy) {
   hopOffset = { x: oldX - player.x, y: oldY - player.y };
   animateHop(dx);
   collectCoin();
+  collectPowerup();
   bestRow = Math.max(bestRow, completedRows + playerStart.y - player.y);
-  score = Math.max(score, bestRow * 10 + runCoins * 25);
+  const speedBonus = speedTimerMs > 0 && dy < 0 ? 10 : 0;
+  score = Math.max(score, bestRow * 10 + runCoins * 25) + speedBonus;
   updateHud();
+  if (raceMode) renderRaceStatus();
   beep(360 + bestRow * 12, 0.035, "triangle");
 
   if (dy < 0 && player.y <= Math.floor(rows * 0.25)) {
@@ -334,7 +391,7 @@ function countRoadRunFromTop() {
 function animateHop(horizontalDirection) {
   cancelAnimationFrame(playerAnimationFrame);
   const start = performance.now();
-  const duration = 145;
+  const duration = speedTimerMs > 0 ? 78 : 145;
   const startOffset = { ...hopOffset };
   function frame(now) {
     const progress = Math.min(1, (now - start) / duration);
@@ -359,15 +416,43 @@ function animateHop(horizontalDirection) {
 function collectCoin() {
   const lane = lanes[player.y];
   const coin = lane.coins.find((item) => !item.collected && item.x === Math.round(player.x));
-  if (coin) {
-    coin.collected = true;
-    runCoins += 1;
-    walletCoins += 1;
-    saveWalletCoins(walletCoins);
-    updateFreezeControls();
+  if (coin) awardCoin(coin);
+}
+
+function collectNearbyCoins() {
+  lanes.forEach((lane) => {
+    if (Math.abs(lane.y - player.y) > 2) return;
+    lane.coins.forEach((coin) => {
+      if (!coin.collected && Math.abs(coin.x - player.x) <= 2.5) awardCoin(coin, false);
+    });
+  });
+}
+
+function awardCoin(coin, playSound = true) {
+  if (coin.collected) return;
+  coin.collected = true;
+  runCoins += 1;
+  walletCoins += 1;
+  saveWalletCoins(walletCoins);
+  updateHud();
+  updateFreezeControls();
+  if (playSound) {
     beep(620, 0.055, "sine");
     noise(0.04, 0.018);
   }
+}
+
+function collectPowerup() {
+  const powerup = lanes[player.y].powerups.find((item) => !item.collected && item.x === Math.round(player.x));
+  if (!powerup) return;
+  powerup.collected = true;
+  if (powerup.type === "shield") shieldCharges += 1;
+  if (powerup.type === "magnet") magnetTimerMs = 10_000;
+  if (powerup.type === "speed") speedTimerMs = 8_000;
+  if (powerup.type === "slow") slowTrafficTimerMs = 10_000;
+  updateEffectBar();
+  updateStatus("running", `${powerup.type} power-up`);
+  beep(760, 0.08, "triangle");
 }
 
 function draw() {
@@ -378,7 +463,8 @@ function draw() {
 
 function drawLane(lane) {
   const y = lane.y * tile;
-  ctx.fillStyle = lane.color;
+  const theme = mapThemes[selectedMap] || mapThemes.meadow;
+  ctx.fillStyle = theme[lane.type] || lane.color;
   ctx.fillRect(0, y, canvas.width, tile);
 
   if (lane.type === "road") drawRoadMarks(y);
@@ -386,6 +472,9 @@ function drawLane(lane) {
 
   lane.coins.forEach((coin) => {
     if (!coin.collected) drawCoin(coin.x, lane.y);
+  });
+  lane.powerups.forEach((powerup) => {
+    if (!powerup.collected) drawPowerup(powerup.x, lane.y, powerup.type);
   });
 
   if (lane.trees) {
@@ -395,6 +484,22 @@ function drawLane(lane) {
     if (lane.type === "road") drawVehicle(actor, lane.y, lane.direction);
     if (lane.type === "river") drawLog(actor, lane.y);
   });
+}
+
+function drawPowerup(x, y, type) {
+  const colors = { shield: "#59d4ff", magnet: "#ff6fba", speed: "#ffd15c", slow: "#b48cff" };
+  const labels = { shield: "S", magnet: "M", speed: ">", slow: "T" };
+  const cx = x * tile + tile / 2;
+  const cy = y * tile + tile / 2;
+  ctx.fillStyle = colors[type];
+  ctx.beginPath();
+  ctx.arc(cx, cy, tile * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#101216";
+  ctx.font = `900 ${tile * 0.22}px Inter, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(labels[type], cx, cy + 1);
 }
 
 function drawRoadMarks(y) {
@@ -473,7 +578,7 @@ function drawTree(x, y) {
   ctx.beginPath();
   ctx.arc(left + tile * 0.5, top + tile * 0.42, tile * 0.27, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#2fa45c";
+  ctx.fillStyle = (mapThemes[selectedMap] || mapThemes.meadow).tree;
   ctx.beginPath();
   ctx.arc(left + tile * 0.38, top + tile * 0.37, tile * 0.14, 0, Math.PI * 2);
   ctx.fill();
@@ -490,6 +595,14 @@ function drawPlayer() {
   ctx.beginPath();
   ctx.ellipse(cx, groundY + tile * 0.24, tile * 0.24 * playerScaleX, tile * 0.09, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  if (shieldCharges > 0 || shieldInvulnerableMs > 0) {
+    ctx.strokeStyle = "rgba(89, 212, 255, 0.8)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, groundY + playerLift, tile * 0.35, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   ctx.save();
   ctx.translate(cx, groundY + playerLift);
@@ -612,6 +725,17 @@ function togglePause() {
 
 function endGame(reason) {
   if (gameState !== "running") return;
+  if (shieldInvulnerableMs > 0) return;
+  if (shieldCharges > 0) {
+    shieldCharges -= 1;
+    shieldInvulnerableMs = 1_200;
+    player.y = Math.min(rows - 1, player.y + 1);
+    updateEffectBar();
+    updateStatus("running", "Shield saved you");
+    animatePlayerRecoil(1.2);
+    beep(860, 0.1, "square");
+    return;
+  }
   gameState = "ended";
   cancelAnimationFrame(animationFrame);
   bestScore = Math.max(bestScore, score);
@@ -634,6 +758,15 @@ function updateHud() {
   coinsEl.textContent = walletCoins;
   menuCoinsEl.textContent = walletCoins;
   rowEl.textContent = bestRow;
+}
+
+function updateEffectBar() {
+  const effects = [];
+  if (shieldCharges > 0) effects.push(`Shield x${shieldCharges}`);
+  if (magnetTimerMs > 0) effects.push(`Magnet ${Math.ceil(magnetTimerMs / 1000)}s`);
+  if (speedTimerMs > 0) effects.push(`Speed ${Math.ceil(speedTimerMs / 1000)}s`);
+  if (slowTrafficTimerMs > 0) effects.push(`Slow traffic ${Math.ceil(slowTrafficTimerMs / 1000)}s`);
+  effectBar.textContent = effects.length ? effects.join(" | ") : "No power-ups active";
 }
 
 function updateStatus(state, text) {
@@ -732,16 +865,42 @@ async function multiplayerHeartbeat() {
       playerId,
       name: playerName,
       coins: walletCoins,
+      inRace: raceMode,
+      raceScore: raceMode ? Math.max(0, score - raceStartScore) : 0,
     });
     onlinePlayers = result.players || [];
     applyReceivedGifts(result.gifts || []);
+    applyReceivedReactions(result.reactions || []);
+    latestRace = result.race || null;
     renderOnlinePlayers();
+    renderRaceStatus();
     multiplayerStatus.textContent = `${onlinePlayers.length} player${onlinePlayers.length === 1 ? "" : "s"} online`;
   } catch (error) {
     multiplayerStatus.textContent = error.message;
   } finally {
     multiplayerBusy = false;
   }
+}
+
+function applyReceivedReactions(reactions) {
+  if (!reactions.length) return;
+  const reaction = reactions[reactions.length - 1];
+  updateStatus(gameState, `${reaction.from}: ${reaction.message}`);
+}
+
+function renderRaceStatus() {
+  const racers = latestRace ? latestRace.racers || [] : [];
+  raceButton.textContent = raceMode ? "Leave race" : "Join 300-point race";
+  if (latestRace && latestRace.winner) {
+    raceStatus.textContent = `${latestRace.winner.name} won the race!`;
+    return;
+  }
+  if (!raceMode) {
+    raceStatus.textContent = `${racers.length} racer${racers.length === 1 ? "" : "s"} waiting`;
+    return;
+  }
+  const myProgress = Math.max(0, score - raceStartScore);
+  raceStatus.textContent = `${myProgress}/${raceTarget} points | ${racers.length} racers`;
 }
 
 function applyReceivedGifts(gifts) {
@@ -765,21 +924,55 @@ function renderOnlinePlayers() {
     name.textContent = onlinePlayer.id === playerId ? `${onlinePlayer.name} (You)` : onlinePlayer.name;
     const coins = document.createElement("span");
     coins.className = "player-coins";
-    coins.textContent = `${onlinePlayer.coins} coins`;
+    coins.textContent = onlinePlayer.inRace
+      ? `${onlinePlayer.coins} coins | Race ${onlinePlayer.raceScore}/${raceTarget}`
+      : `${onlinePlayer.coins} coins`;
     details.append(name, coins);
     row.append(details);
 
     if (onlinePlayer.id !== playerId) {
+      const actions = document.createElement("div");
+      actions.className = "player-actions";
       const giftButton = document.createElement("button");
       giftButton.className = "gift-button";
       giftButton.type = "button";
       giftButton.textContent = `Gift ${giftAmount}`;
       giftButton.disabled = walletCoins < giftAmount;
       giftButton.addEventListener("click", () => giftCoins(onlinePlayer));
-      row.append(giftButton);
+      actions.append(giftButton);
+      [
+        ["H", "Hi!"],
+        ["N", "Nice!"],
+        ["R", "Race me!"],
+      ].forEach(([label, message]) => {
+        const reactionButton = document.createElement("button");
+        reactionButton.className = "reaction-button";
+        reactionButton.type = "button";
+        reactionButton.textContent = label;
+        reactionButton.title = message;
+        reactionButton.addEventListener("click", () => sendReaction(onlinePlayer, message));
+        actions.append(reactionButton);
+      });
+      row.append(actions);
     }
     playerList.append(row);
   });
+}
+
+async function sendReaction(recipient, message) {
+  try {
+    await multiplayerRequest({ action: "reaction", fromId: playerId, toId: recipient.id, message });
+    multiplayerStatus.textContent = `Sent ${message} to ${recipient.name}`;
+  } catch (error) {
+    multiplayerStatus.textContent = error.message;
+  }
+}
+
+function toggleRaceMode() {
+  raceMode = !raceMode;
+  raceStartScore = score;
+  renderRaceStatus();
+  multiplayerHeartbeat();
 }
 
 async function giftCoins(recipient) {
@@ -796,7 +989,14 @@ async function giftCoins(recipient) {
     saveWalletCoins(walletCoins);
     updateHud();
     multiplayerStatus.textContent = `Sent ${giftAmount} coins to ${recipient.name}`;
-    await multiplayerRequest({ action: "heartbeat", playerId, name: playerName, coins: walletCoins });
+    await multiplayerRequest({
+      action: "heartbeat",
+      playerId,
+      name: playerName,
+      coins: walletCoins,
+      inRace: raceMode,
+      raceScore: raceMode ? Math.max(0, score - raceStartScore) : 0,
+    });
     renderOnlinePlayers();
   } catch (error) {
     multiplayerStatus.textContent = error.message;
@@ -895,6 +1095,24 @@ function loadSelectedSkin() {
   }
 }
 
+function loadUnlockedSkins() {
+  const defaults = ["lime", "berry", "sky", "gold"];
+  try {
+    const saved = JSON.parse(window.localStorage.getItem("road-hop-rush-unlocked-skins") || "[]");
+    return new Set(defaults.concat(Array.isArray(saved) ? saved : []));
+  } catch (error) {
+    return new Set(defaults);
+  }
+}
+
+function saveUnlockedSkins() {
+  try {
+    window.localStorage.setItem("road-hop-rush-unlocked-skins", JSON.stringify([...unlockedSkins]));
+  } catch (error) {
+    // Unlocks still work for the current session when storage is blocked.
+  }
+}
+
 function saveSelectedSkin(value) {
   try {
     window.localStorage.setItem("road-hop-rush-skin", value);
@@ -905,6 +1123,18 @@ function saveSelectedSkin(value) {
 
 function chooseSkin(skinId) {
   if (!skins[skinId]) return;
+  if (!unlockedSkins.has(skinId)) {
+    const cost = skins[skinId].cost;
+    if (walletCoins < cost) {
+      updateStatus(gameState, `Need ${cost} coins`);
+      return;
+    }
+    walletCoins -= cost;
+    unlockedSkins.add(skinId);
+    saveWalletCoins(walletCoins);
+    saveUnlockedSkins();
+    updateHud();
+  }
   selectedSkinId = skinId;
   saveSelectedSkin(skinId);
   updateSkinButtons();
@@ -914,7 +1144,65 @@ function chooseSkin(skinId) {
 function updateSkinButtons() {
   skinButtons.forEach((button) => {
     button.classList.toggle("is-selected", button.dataset.skin === selectedSkinId);
+    button.classList.toggle("is-locked", !unlockedSkins.has(button.dataset.skin));
   });
+}
+
+function loadSelectedMap() {
+  try {
+    const saved = window.localStorage.getItem("road-hop-rush-map");
+    return mapThemes[saved] ? saved : "meadow";
+  } catch (error) {
+    return "meadow";
+  }
+}
+
+function chooseMap(mapId) {
+  if (!mapThemes[mapId]) return;
+  selectedMap = mapId;
+  try {
+    window.localStorage.setItem("road-hop-rush-map", mapId);
+  } catch (error) {
+    // The selected map still applies for this session.
+  }
+  updateMapButtons();
+  draw();
+}
+
+function updateMapButtons() {
+  mapButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.map === selectedMap));
+}
+
+function todayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
+function claimDailyReward() {
+  try {
+    if (window.localStorage.getItem("road-hop-rush-daily") === todayKey()) return;
+    window.localStorage.setItem("road-hop-rush-daily", todayKey());
+  } catch (error) {
+    if (dailyRewardButton.dataset.claimed === todayKey()) return;
+    dailyRewardButton.dataset.claimed = todayKey();
+  }
+  walletCoins += dailyRewardCoins;
+  saveWalletCoins(walletCoins);
+  updateHud();
+  updateDailyRewardButton();
+  updateStatus(gameState, `Daily reward: ${dailyRewardCoins} coins`);
+  beep(820, 0.1, "sine");
+}
+
+function updateDailyRewardButton() {
+  let claimed = false;
+  try {
+    claimed = window.localStorage.getItem("road-hop-rush-daily") === todayKey();
+  } catch (error) {
+    claimed = dailyRewardButton.dataset.claimed === todayKey();
+  }
+  dailyRewardButton.textContent = claimed ? "Daily claimed" : `Daily +${dailyRewardCoins}`;
+  dailyRewardButton.disabled = claimed;
 }
 
 function buyFreezeGun() {
@@ -1097,6 +1385,12 @@ skinMenuButton.addEventListener("click", () => {
   skinMenu.classList.toggle("is-hidden");
 });
 
+mapMenuButton.addEventListener("click", () => {
+  mapMenu.classList.toggle("is-hidden");
+});
+
+dailyRewardButton.addEventListener("click", claimDailyReward);
+
 secretMenuButton.addEventListener("click", () => {
   secretMenu.classList.toggle("is-hidden");
 });
@@ -1112,10 +1406,15 @@ playerNameInput.addEventListener("change", () => {
 });
 
 refreshPlayersButton.addEventListener("click", multiplayerHeartbeat);
+raceButton.addEventListener("click", toggleRaceMode);
 window.setInterval(multiplayerHeartbeat, 15_000);
 
 skinButtons.forEach((button) => {
   button.addEventListener("click", () => chooseSkin(button.dataset.skin));
+});
+
+mapButtons.forEach((button) => {
+  button.addEventListener("click", () => chooseMap(button.dataset.map));
 });
 
 freezeGunBuyButton.addEventListener("click", buyFreezeGun);

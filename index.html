@@ -43,6 +43,7 @@
             <strong id="row">0</strong>
           </div>
         </div>
+        <div class="effect-bar" id="effectBar">No power-ups active</div>
 
         <div class="board-wrap">
           <canvas id="board" width="960" height="1280" aria-label="Crossing game board"></canvas>
@@ -53,6 +54,8 @@
             <div class="menu-actions">
               <button class="primary-button" id="startButton" type="button" onclick="window.roadHopStart && window.roadHopStart(event)">Start</button>
               <button class="secondary-button" id="skinMenuButton" type="button">Skins</button>
+              <button class="secondary-button" id="mapMenuButton" type="button">Maps</button>
+              <button class="secondary-button" id="dailyRewardButton" type="button">Daily Reward</button>
               <button class="secondary-button" id="secretMenuButton" type="button">Secret</button>
               <button class="secondary-button" id="multiplayerMenuButton" type="button">Multiplayer</button>
               <button class="danger-button" id="doNotClickButton" type="button">DO NOT CLICK</button>
@@ -62,16 +65,43 @@
             <div class="skin-menu is-hidden" id="skinMenu" aria-label="Choose your skin">
               <button class="skin-option" data-skin="lime" type="button" aria-label="Choose lime skin">
                 <span class="skin-preview lime"></span>
+                <span class="skin-label">Lime</span>
               </button>
               <button class="skin-option" data-skin="berry" type="button" aria-label="Choose berry skin">
                 <span class="skin-preview berry"></span>
+                <span class="skin-label">Berry</span>
               </button>
               <button class="skin-option" data-skin="sky" type="button" aria-label="Choose sky skin">
                 <span class="skin-preview sky"></span>
+                <span class="skin-label">Sky</span>
               </button>
               <button class="skin-option" data-skin="gold" type="button" aria-label="Choose gold skin">
                 <span class="skin-preview gold"></span>
+                <span class="skin-label">Gold</span>
               </button>
+              <button class="skin-option" data-skin="frog" type="button" aria-label="Unlock frog skin">
+                <span class="skin-preview frog"></span>
+                <span class="skin-label">Frog 50</span>
+              </button>
+              <button class="skin-option" data-skin="chicken" type="button" aria-label="Unlock chicken skin">
+                <span class="skin-preview chicken"></span>
+                <span class="skin-label">Chicken 75</span>
+              </button>
+              <button class="skin-option" data-skin="robot" type="button" aria-label="Unlock robot skin">
+                <span class="skin-preview robot"></span>
+                <span class="skin-label">Robot 100</span>
+              </button>
+              <button class="skin-option" data-skin="penguin" type="button" aria-label="Unlock penguin skin">
+                <span class="skin-preview penguin"></span>
+                <span class="skin-label">Penguin 125</span>
+              </button>
+            </div>
+            <div class="map-menu is-hidden" id="mapMenu" aria-label="Choose a map">
+              <button class="map-option" data-map="meadow" type="button">Meadow</button>
+              <button class="map-option" data-map="snow" type="button">Snow</button>
+              <button class="map-option" data-map="desert" type="button">Desert</button>
+              <button class="map-option" data-map="night" type="button">Night</button>
+              <button class="map-option" data-map="space" type="button">Space</button>
             </div>
             <div class="secret-menu is-hidden" id="secretMenu" aria-label="Secret shop">
               <div class="secret-status" id="secretStatus">Freeze Gun: Locked | Ice Cubes: 0</div>
@@ -84,6 +114,10 @@
                 <button class="icon-button" id="refreshPlayersButton" type="button" aria-label="Refresh players" title="Refresh players">&#8635;</button>
               </div>
               <div class="multiplayer-status" id="multiplayerStatus">Connecting...</div>
+              <div class="race-controls">
+                <button class="shop-button" id="raceButton" type="button">Join 300-point race</button>
+                <span id="raceStatus">Race lobby open</span>
+              </div>
               <div class="player-list" id="playerList"></div>
             </div>
           </div>
@@ -117,6 +151,6 @@
       </aside>
     </main>
 
-    <script src="script.js?v=39"></script>
+    <script src="script.js?v=40"></script>
   </body>
 </html>
