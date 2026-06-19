@@ -150,6 +150,7 @@ let runCoins = 0;
 let walletCoins = loadWalletCoins();
 walletCoins += claimPrivateCoinGrant();
 walletCoins += claimBigPrivateCoinGrant();
+const hasInfiniteCoins = claimOwnerInfiniteCoins();
 let bestRow = 0;
 let completedRows = 0;
 let bestScore = loadBestScore();
@@ -884,8 +885,8 @@ function endGame(reason) {
 function updateHud() {
   scoreEl.textContent = score;
   bestScoreEl.textContent = bestScore;
-  coinsEl.textContent = walletCoins;
-  menuCoinsEl.textContent = walletCoins;
+  coinsEl.textContent = hasInfiniteCoins ? "∞" : walletCoins;
+  menuCoinsEl.textContent = hasInfiniteCoins ? "∞" : walletCoins;
   rowEl.textContent = bestRow;
 }
 
@@ -1213,7 +1214,9 @@ function renderOnlinePlayers() {
     name.textContent = onlinePlayer.id === playerId ? `${onlinePlayer.name} (You)` : onlinePlayer.name;
     const coins = document.createElement("span");
     coins.className = "player-coins";
-    coins.textContent = onlinePlayer.inRace
+    coins.textContent = onlinePlayer.id === playerId && hasInfiniteCoins
+      ? "∞ coins"
+      : onlinePlayer.inRace
       ? `${onlinePlayer.coins} coins | Race ${onlinePlayer.raceScore}/${raceTarget}`
       : `${onlinePlayer.coins} coins`;
     details.append(name, coins);
@@ -1308,7 +1311,7 @@ async function giftCoins(recipient) {
       amount: giftAmount,
       roomCode: currentRoomCode,
     });
-    walletCoins -= giftAmount;
+    if (!hasInfiniteCoins) walletCoins -= giftAmount;
     saveWalletCoins(walletCoins);
     updateHud();
     multiplayerStatus.textContent = `Sent ${giftAmount} coins to ${recipient.name}`;
@@ -1416,6 +1419,17 @@ function claimBigPrivateCoinGrant() {
   }
 }
 
+function claimOwnerInfiniteCoins() {
+  try {
+    const ownerMarker = "road-hop-rush-private-grant-99999";
+    if (window.localStorage.getItem(ownerMarker) !== "claimed") return false;
+    window.localStorage.setItem("road-hop-rush-owner-infinite-v1", "active");
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function loadSelectedSkin() {
   try {
     const savedSkin = window.localStorage.getItem("road-hop-rush-skin");
@@ -1459,7 +1473,7 @@ function chooseSkin(skinId) {
       updateStatus(gameState, `Need ${cost} coins`);
       return;
     }
-    walletCoins -= cost;
+    if (!hasInfiniteCoins) walletCoins -= cost;
     unlockedSkins.add(skinId);
     saveWalletCoins(walletCoins);
     saveUnlockedSkins();
@@ -1545,7 +1559,7 @@ function buyFreezeGun() {
     return;
   }
 
-  walletCoins -= freezeGunCost;
+  if (!hasInfiniteCoins) walletCoins -= freezeGunCost;
   hasFreezeGun = true;
   saveWalletCoins(walletCoins);
   saveFreezeGunOwnership();
@@ -1569,7 +1583,7 @@ function buyIceCube() {
     return;
   }
 
-  walletCoins -= iceCubeCost;
+  if (!hasInfiniteCoins) walletCoins -= iceCubeCost;
   iceCubes += 1;
   saveWalletCoins(walletCoins);
   saveIceCubes();
