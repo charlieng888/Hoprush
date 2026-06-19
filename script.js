@@ -48,6 +48,17 @@ const activeRoomCode = document.querySelector("#activeRoomCode");
 const leaveRoomButton = document.querySelector("#leaveRoomButton");
 const raceButton = document.querySelector("#raceButton");
 const raceStatus = document.querySelector("#raceStatus");
+const raceTargetSelect = document.querySelector("#raceTargetSelect");
+const roomMapSelect = document.querySelector("#roomMapSelect");
+const playerLimitSelect = document.querySelector("#playerLimitSelect");
+const saveRoomSettingsButton = document.querySelector("#saveRoomSettingsButton");
+const extrasMenuButton = document.querySelector("#extrasMenuButton");
+const extrasMenu = document.querySelector("#extrasMenu");
+const petButtons = document.querySelectorAll("[data-pet]");
+const weatherButtons = document.querySelectorAll("[data-weather]");
+const eventBanner = document.querySelector("#eventBanner");
+const achievementList = document.querySelector("#achievementList");
+const leaderboardList = document.querySelector("#leaderboardList");
 const freezeGunBuyButton = document.querySelector("#freezeGunBuyButton");
 const freezeGunShopButton = document.querySelector("#freezeGunShopButton");
 const freezeButton = document.querySelector("#freezeButton");
@@ -70,7 +81,7 @@ const freezeGunCost = 100;
 const iceCubeCost = 1;
 const freezeDurationMs = 5000;
 const giftAmount = 10;
-const raceTarget = 300;
+let raceTarget = 300;
 const dailyRewardCoins = 50;
 const skins = {
   lime: { body: "#f4f7fb", cap: "#8ee35f", eye: "#101216", cost: 0 },
@@ -89,6 +100,23 @@ const mapThemes = {
   night: { safe: "#294d3a", grass: "#1d3b2b", road: "#171b25", river: "#193f66", tree: "#26724a" },
   space: { safe: "#4b416d", grass: "#342d55", road: "#151322", river: "#314c86", tree: "#8b6fd1" },
 };
+const skinAbilities = {
+  lime: "Balanced",
+  berry: "Coins worth +1",
+  sky: "Longer magnet",
+  gold: "Double event rewards",
+  frog: "Start with a shield",
+  chicken: "Speed hops score +15",
+  robot: "Traffic starts slowed",
+  penguin: "One free river rescue",
+};
+const achievements = [
+  { id: "score100", label: "Score 100", reward: 20, test: () => bestScore >= 100 },
+  { id: "score500", label: "Score 500", reward: 75, test: () => bestScore >= 500 },
+  { id: "coins25", label: "Collect 25 coins", reward: 30, test: () => lifetimeCoins >= 25 },
+  { id: "racewin", label: "Win a race", reward: 100, test: () => raceWins >= 1 },
+];
+const eventNames = ["Double Coins", "Turbo Day", "Storm Challenge"];
 
 const laneTemplates = [
   { type: "safe", color: "#3a8c56" },
@@ -152,6 +180,17 @@ let raceMode = false;
 let raceStartScore = 0;
 let latestRace = null;
 let currentRoomCode = loadRoomCode();
+let selectedPet = loadSimpleSetting("pet", "none");
+let selectedWeather = loadSimpleSetting("weather", "clear");
+let friends = new Set(loadJsonSetting("friends", []));
+let onlineFriends = [];
+let claimedAchievements = new Set(loadJsonSetting("achievements", []));
+let lifetimeCoins = Number(loadSimpleSetting("lifetime-coins", "0"));
+let raceWins = Number(loadSimpleSetting("race-wins", "0"));
+let penguinRescue = 0;
+let latestRoomSettings = { target: 300, map: "meadow", limit: 4 };
+let lastRaceWinAt = 0;
+const activeEvent = eventNames[new Date().getDate() % eventNames.length];
 const doNotClickSound = new Audio("sounds/do-not-click.mp3");
 doNotClickSound.volume = 0.8;
 const doNotClickSoundTwo = new Audio("sounds/do-not-click-2.mp3");
@@ -169,6 +208,8 @@ updateFreezeControls();
 renderRaceStatus();
 playerNameInput.value = playerName;
 renderRoomControls();
+renderExtras();
+checkAchievements();
 
 window.roadHopStart = activateStart;
 window.roadHopPause = togglePause;
@@ -202,6 +243,10 @@ function resetGame() {
   magnetTimerMs = 0;
   speedTimerMs = 0;
   slowTrafficTimerMs = 0;
+  penguinRescue = selectedSkinId === "penguin" ? 1 : 0;
+  if (selectedSkinId === "frog") shieldCharges = 1;
+  if (selectedSkinId === "robot") slowTrafficTimerMs = 12_000;
+  if (activeEvent === "Turbo Day") speedTimerMs = 12_000;
   updateHud();
   updateFreezeControls();
   updateEffectBar();
@@ -221,7 +266,10 @@ function createLane(template, y) {
         x: template.direction > 0 ? x : columns - x,
         width: Math.random() > 0.62 ? 2 : 1.35,
         color: template.vehicle,
+        boss: completedRows > 12 && Math.random() < 0.08,
       });
+      const actor = lane.actors[lane.actors.length - 1];
+      if (actor.boss) { actor.width = 3.2; actor.color = "#e34f4f"; }
     }
   }
 
@@ -285,6 +333,7 @@ function update(delta) {
   slowTrafficTimerMs = Math.max(0, slowTrafficTimerMs - delta);
   shieldInvulnerableMs = Math.max(0, shieldInvulnerableMs - delta);
   if (magnetTimerMs > 0) collectNearbyCoins();
+  if (selectedPet !== "none") collectPetCoin();
   updateEffectBar();
 
   const lane = lanes[player.y];
@@ -331,7 +380,7 @@ function hop(dx, dy) {
   collectCoin();
   collectPowerup();
   bestRow = Math.max(bestRow, completedRows + playerStart.y - player.y);
-  const speedBonus = speedTimerMs > 0 && dy < 0 ? 10 : 0;
+  const speedBonus = speedTimerMs > 0 && dy < 0 ? (selectedSkinId === "chicken" ? 15 : 10) : 0;
   score = Math.max(score, bestRow * 10 + runCoins * 25) + speedBonus;
   updateHud();
   if (raceMode) renderRaceStatus();
@@ -439,15 +488,26 @@ function collectNearbyCoins() {
 function awardCoin(coin, playSound = true) {
   if (coin.collected) return;
   coin.collected = true;
+  const eventMultiplier = activeEvent === "Double Coins" ? (selectedSkinId === "gold" ? 4 : 2) : 1;
+  const amount = (selectedSkinId === "berry" ? 2 : 1) * eventMultiplier;
   runCoins += 1;
-  walletCoins += 1;
+  walletCoins += amount;
+  lifetimeCoins += 1;
+  saveSimpleSetting("lifetime-coins", lifetimeCoins);
   saveWalletCoins(walletCoins);
   updateHud();
   updateFreezeControls();
+  checkAchievements();
   if (playSound) {
     beep(620, 0.055, "sine");
     noise(0.04, 0.018);
   }
+}
+
+function collectPetCoin() {
+  const lane = lanes[player.y];
+  const coin = lane.coins.find((item) => !item.collected && Math.abs(item.x - player.x) <= 1.25);
+  if (coin) awardCoin(coin, false);
 }
 
 function collectPowerup() {
@@ -466,7 +526,10 @@ function collectPowerup() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   lanes.forEach(drawLane);
+  drawRemotePlayers();
+  drawPet();
   drawPlayer();
+  drawWeather();
 }
 
 function drawLane(lane) {
@@ -547,6 +610,57 @@ function drawVehicle(actor, y, direction) {
   ctx.fillStyle = "#111318";
   ctx.fillRect(x + width * 0.16, top + height - 4, tile * 0.18, 6);
   ctx.fillRect(x + width * 0.68, top + height - 4, tile * 0.18, 6);
+  if (actor.boss) {
+    ctx.fillStyle = "#fff";
+    ctx.font = `900 ${tile * 0.18}px Inter`;
+    ctx.fillText("BOSS", x + width / 2, top + height * 0.62);
+  }
+}
+
+function drawRemotePlayers() {
+  onlinePlayers.filter((item) => item.id !== playerId).forEach((item) => {
+    const y = playerStart.y - ((Number(item.worldRow) || 0) - completedRows);
+    if (y < 0 || y >= rows) return;
+    const skin = skins[item.skin] || skins.lime;
+    const cx = (Number(item.x) || 0) * tile + tile / 2;
+    const cy = y * tile + tile / 2;
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = skin.cap;
+    roundedRect(cx - tile * .2, cy - tile * .2, tile * .4, tile * .4, 8);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = `700 ${tile * .12}px Inter`;
+    ctx.textAlign = "center";
+    ctx.fillText(item.name, cx, cy - tile * .3);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawPet() {
+  if (selectedPet === "none") return;
+  const colors = { dog: "#c98b52", cat: "#c8ccd4", drone: "#59d4ff" };
+  const cx = (player.x + 1.05) * tile;
+  const cy = (player.y + .7) * tile;
+  ctx.fillStyle = colors[selectedPet];
+  ctx.beginPath(); ctx.arc(cx, cy, tile * .14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#111"; ctx.fillRect(cx - 7, cy - 3, 4, 4); ctx.fillRect(cx + 3, cy - 3, 4, 4);
+}
+
+function drawWeather() {
+  const weather = activeEvent === "Storm Challenge" ? "storm" : selectedWeather;
+  if (weather === "clear") return;
+  if (weather === "fog") {
+    ctx.fillStyle = "rgba(225,235,240,.18)"; ctx.fillRect(0, 0, canvas.width, canvas.height); return;
+  }
+  ctx.strokeStyle = weather === "storm" ? "rgba(180,210,255,.55)" : "rgba(160,220,255,.4)";
+  ctx.lineWidth = 3;
+  const offset = Date.now() / 8 % 80;
+  for (let x = -80; x < canvas.width; x += 70) for (let y = -80; y < canvas.height; y += 100) {
+    ctx.beginPath(); ctx.moveTo(x + offset, y); ctx.lineTo(x + offset - 14, y + 28); ctx.stroke();
+  }
+  if (weather === "storm" && Math.floor(Date.now() / 900) % 7 === 0) {
+    ctx.fillStyle = "rgba(255,255,255,.16)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
 function drawLog(actor, y) {
@@ -744,10 +858,17 @@ function endGame(reason) {
     beep(860, 0.1, "square");
     return;
   }
+  if (reason === "Splash!" && penguinRescue > 0) {
+    penguinRescue -= 1;
+    player.y = Math.min(rows - 1, player.y + 1);
+    updateStatus("running", "Penguin rescued you");
+    return;
+  }
   gameState = "ended";
   cancelAnimationFrame(animationFrame);
   bestScore = Math.max(bestScore, score);
   saveBestScore(bestScore);
+  checkAchievements();
   updateHud();
   overlayKicker.textContent = reason;
   overlayTitle.textContent = `${score} points`;
@@ -782,6 +903,61 @@ function updateStatus(state, text) {
   if (state === "running") statusDot.classList.add("is-running");
   if (state === "ended") statusDot.classList.add("is-ended");
   statusText.textContent = text;
+}
+
+function loadSimpleSetting(key, fallback) {
+  try { return window.localStorage.getItem(`road-hop-rush-${key}`) || fallback; } catch (error) { return fallback; }
+}
+
+function saveSimpleSetting(key, value) {
+  try { window.localStorage.setItem(`road-hop-rush-${key}`, String(value)); } catch (error) { /* Session value remains active. */ }
+}
+
+function loadJsonSetting(key, fallback) {
+  try { return JSON.parse(window.localStorage.getItem(`road-hop-rush-${key}`) || JSON.stringify(fallback)); } catch (error) { return fallback; }
+}
+
+function saveJsonSetting(key, value) {
+  try { window.localStorage.setItem(`road-hop-rush-${key}`, JSON.stringify(value)); } catch (error) { /* Session value remains active. */ }
+}
+
+function renderExtras() {
+  petButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.pet === selectedPet));
+  weatherButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.weather === selectedWeather));
+  eventBanner.textContent = `Today's event: ${activeEvent}`;
+  achievementList.replaceChildren();
+  achievements.forEach((achievement) => {
+    const row = document.createElement("div");
+    row.textContent = `${claimedAchievements.has(achievement.id) ? "DONE" : "LOCKED"} ${achievement.label} (+${achievement.reward})`;
+    achievementList.append(row);
+  });
+}
+
+function checkAchievements() {
+  let reward = 0;
+  achievements.forEach((achievement) => {
+    if (!claimedAchievements.has(achievement.id) && achievement.test()) {
+      claimedAchievements.add(achievement.id);
+      reward += achievement.reward;
+    }
+  });
+  if (!reward) { renderExtras(); return; }
+  walletCoins += reward;
+  saveWalletCoins(walletCoins);
+  saveJsonSetting("achievements", [...claimedAchievements]);
+  updateHud();
+  renderExtras();
+  updateStatus(gameState, `Achievements: +${reward} coins`);
+}
+
+function renderLeaderboard(players = []) {
+  leaderboardList.replaceChildren();
+  players.slice(0, 8).forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.textContent = `${index + 1}. ${entry.name} - ${entry.bestScore}`;
+    leaderboardList.append(row);
+  });
+  if (!players.length) leaderboardList.textContent = "No scores yet";
 }
 
 function loadBestScore() {
@@ -945,11 +1121,31 @@ async function multiplayerHeartbeat() {
       inRace: raceMode,
       raceScore: raceMode ? Math.max(0, score - raceStartScore) : 0,
       roomCode: currentRoomCode,
+      x: player.x,
+      worldRow: completedRows + playerStart.y - player.y,
+      skin: selectedSkinId,
+      bestScore,
+      raceWins,
+      friendIds: [...friends],
     });
     onlinePlayers = result.players || [];
     applyReceivedGifts(result.gifts || []);
     applyReceivedReactions(result.reactions || []);
     latestRace = result.race || null;
+    latestRoomSettings = result.settings || latestRoomSettings;
+    raceTarget = latestRoomSettings.target || 300;
+    if (currentRoomCode !== "PUBLIC" && latestRoomSettings.map && selectedMap !== latestRoomSettings.map) chooseMap(latestRoomSettings.map);
+    raceTargetSelect.value = String(raceTarget);
+    roomMapSelect.value = latestRoomSettings.map || "meadow";
+    playerLimitSelect.value = String(latestRoomSettings.limit || 4);
+    renderLeaderboard(result.leaderboard || []);
+    onlineFriends = result.friends || [];
+    if (latestRace && latestRace.winner && latestRace.winner.id === playerId && latestRace.winner.wonAt !== lastRaceWinAt) {
+      lastRaceWinAt = latestRace.winner.wonAt;
+      raceWins += 1;
+      saveSimpleSetting("race-wins", raceWins);
+      checkAchievements();
+    }
     renderOnlinePlayers();
     renderRaceStatus();
     const place = currentRoomCode === "PUBLIC" ? "public lobby" : `room ${currentRoomCode}`;
@@ -969,7 +1165,7 @@ function applyReceivedReactions(reactions) {
 
 function renderRaceStatus() {
   const racers = latestRace ? latestRace.racers || [] : [];
-  raceButton.textContent = raceMode ? "Leave race" : "Join 300-point race";
+  raceButton.textContent = raceMode ? "Leave race" : `Join ${raceTarget}-point race`;
   if (latestRace && latestRace.winner) {
     raceStatus.textContent = `${latestRace.winner.name} won the race!`;
     return;
@@ -994,6 +1190,20 @@ function applyReceivedGifts(gifts) {
 
 function renderOnlinePlayers() {
   playerList.replaceChildren();
+  onlineFriends.filter((friend) => friend.roomCode !== currentRoomCode).forEach((friend) => {
+    const row = document.createElement("div");
+    row.className = "player-row";
+    const name = document.createElement("div");
+    name.className = "player-name";
+    name.textContent = `${friend.name} - ${friend.roomCode === "PUBLIC" ? "Public" : `Room ${friend.roomCode}`}`;
+    const join = document.createElement("button");
+    join.className = "gift-button";
+    join.type = "button";
+    join.textContent = "Join Friend";
+    join.addEventListener("click", () => friend.roomCode === "PUBLIC" ? leaveRoom() : enterRoom(friend.roomCode));
+    row.append(name, join);
+    playerList.append(row);
+  });
   onlinePlayers.forEach((onlinePlayer) => {
     const row = document.createElement("div");
     row.className = "player-row";
@@ -1019,6 +1229,13 @@ function renderOnlinePlayers() {
       giftButton.disabled = walletCoins < giftAmount;
       giftButton.addEventListener("click", () => giftCoins(onlinePlayer));
       actions.append(giftButton);
+      const friendButton = document.createElement("button");
+      friendButton.className = `reaction-button friend-button${friends.has(onlinePlayer.id) ? " is-friend" : ""}`;
+      friendButton.type = "button";
+      friendButton.textContent = friends.has(onlinePlayer.id) ? "F+" : "F";
+      friendButton.title = friends.has(onlinePlayer.id) ? "Remove friend" : "Add friend";
+      friendButton.addEventListener("click", () => toggleFriend(onlinePlayer.id));
+      actions.append(friendButton);
       [
         ["H", "Hi!"],
         ["N", "Nice!"],
@@ -1036,6 +1253,32 @@ function renderOnlinePlayers() {
     }
     playerList.append(row);
   });
+}
+
+function toggleFriend(id) {
+  if (friends.has(id)) friends.delete(id); else friends.add(id);
+  saveJsonSetting("friends", [...friends]);
+  renderOnlinePlayers();
+}
+
+async function saveRoomSettings() {
+  if (currentRoomCode === "PUBLIC") {
+    multiplayerStatus.textContent = "Create or join a private room first";
+    return;
+  }
+  try {
+    const result = await multiplayerRequest({
+      action: "settings",
+      playerId,
+      roomCode: currentRoomCode,
+      settings: { target: Number(raceTargetSelect.value), map: roomMapSelect.value, limit: Number(playerLimitSelect.value) },
+    });
+    latestRoomSettings = result.settings;
+    raceTarget = latestRoomSettings.target;
+    chooseMap(latestRoomSettings.map);
+    multiplayerStatus.textContent = "Room settings saved";
+    renderRaceStatus();
+  } catch (error) { multiplayerStatus.textContent = error.message; }
 }
 
 async function sendReaction(recipient, message) {
@@ -1077,6 +1320,12 @@ async function giftCoins(recipient) {
       inRace: raceMode,
       raceScore: raceMode ? Math.max(0, score - raceStartScore) : 0,
       roomCode: currentRoomCode,
+      x: player.x,
+      worldRow: completedRows + playerStart.y - player.y,
+      skin: selectedSkinId,
+      bestScore,
+      raceWins,
+      friendIds: [...friends],
     });
     renderOnlinePlayers();
   } catch (error) {
@@ -1226,6 +1475,7 @@ function updateSkinButtons() {
   skinButtons.forEach((button) => {
     button.classList.toggle("is-selected", button.dataset.skin === selectedSkinId);
     button.classList.toggle("is-locked", !unlockedSkins.has(button.dataset.skin));
+    button.title = skinAbilities[button.dataset.skin] || "Balanced";
   });
 }
 
@@ -1481,6 +1731,11 @@ multiplayerMenuButton.addEventListener("click", () => {
   if (!multiplayerMenu.classList.contains("is-hidden")) multiplayerHeartbeat();
 });
 
+extrasMenuButton.addEventListener("click", () => {
+  extrasMenu.classList.toggle("is-hidden");
+  renderExtras();
+});
+
 playerNameInput.addEventListener("change", () => {
   savePlayerName(playerNameInput.value);
   multiplayerHeartbeat();
@@ -1497,7 +1752,20 @@ roomCodeInput.addEventListener("keydown", (event) => {
 });
 leaveRoomButton.addEventListener("click", leaveRoom);
 raceButton.addEventListener("click", toggleRaceMode);
-window.setInterval(multiplayerHeartbeat, 15_000);
+saveRoomSettingsButton.addEventListener("click", saveRoomSettings);
+window.setInterval(multiplayerHeartbeat, 3_000);
+
+petButtons.forEach((button) => button.addEventListener("click", () => {
+  selectedPet = button.dataset.pet;
+  saveSimpleSetting("pet", selectedPet);
+  renderExtras(); draw();
+}));
+
+weatherButtons.forEach((button) => button.addEventListener("click", () => {
+  selectedWeather = button.dataset.weather;
+  saveSimpleSetting("weather", selectedWeather);
+  renderExtras(); draw();
+}));
 
 skinButtons.forEach((button) => {
   button.addEventListener("click", () => chooseSkin(button.dataset.skin));

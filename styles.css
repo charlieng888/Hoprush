@@ -262,9 +262,63 @@ canvas {
 .skin-menu.is-hidden,
 .secret-menu.is-hidden,
 .multiplayer-menu.is-hidden,
-.map-menu.is-hidden {
+.map-menu.is-hidden,
+.extras-menu.is-hidden {
   display: none;
 }
+
+.room-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.room-settings label {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.room-settings select {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 6px;
+  background: #141820;
+  color: var(--ink);
+  font: inherit;
+}
+
+.room-settings .shop-button { grid-column: 1 / -1; min-height: 36px; }
+
+.extras-menu {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  max-height: 330px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.extras-section, .event-banner, .extras-columns > div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255,255,255,.05);
+}
+
+.option-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.option-row button { min-height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; background: #242a33; font-size: .72rem; font-weight: 800; }
+.option-row button.is-selected { border-color: var(--lime); color: var(--lime); }
+.event-banner { color: var(--gold); font-size: .78rem; font-weight: 800; }
+.extras-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.extras-columns strong { display: block; margin-bottom: 6px; }
+#achievementList, #leaderboardList { display: grid; gap: 5px; color: var(--muted); font-size: .7rem; }
+.friend-button.is-friend { color: var(--gold); border-color: var(--gold); }
 
 .map-menu {
   width: min(370px, 100%);
@@ -722,4 +776,5 @@ button:disabled {
   .map-menu {
     grid-template-columns: repeat(3, 1fr);
   }
+  .extras-columns { grid-template-columns: 1fr; }
 }

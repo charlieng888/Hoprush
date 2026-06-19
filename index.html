@@ -58,6 +58,7 @@
               <button class="secondary-button" id="dailyRewardButton" type="button">Daily Reward</button>
               <button class="secondary-button" id="secretMenuButton" type="button">Secret</button>
               <button class="secondary-button" id="multiplayerMenuButton" type="button">Multiplayer</button>
+              <button class="secondary-button" id="extrasMenuButton" type="button">Extras</button>
               <button class="danger-button" id="doNotClickButton" type="button">DO NOT CLICK</button>
               <button class="danger-button" id="doNotClickButtonTwo" type="button">DO NOT CLICK 2</button>
               <button class="danger-button" id="doNotClickButtonThree" type="button">DO NOT CLICK 3</button>
@@ -125,11 +126,23 @@
                 </div>
               </div>
               <div class="multiplayer-status" id="multiplayerStatus">Connecting...</div>
+              <div class="room-settings" id="roomSettings">
+                <label>Race <select id="raceTargetSelect"><option value="100">100</option><option value="300" selected>300</option><option value="500">500</option></select></label>
+                <label>Map <select id="roomMapSelect"><option value="meadow">Meadow</option><option value="snow">Snow</option><option value="desert">Desert</option><option value="night">Night</option><option value="space">Space</option></select></label>
+                <label>Players <select id="playerLimitSelect"><option value="2">2</option><option value="4" selected>4</option><option value="8">8</option></select></label>
+                <button class="shop-button" id="saveRoomSettingsButton" type="button">Save Settings</button>
+              </div>
               <div class="race-controls">
                 <button class="shop-button" id="raceButton" type="button">Join 300-point race</button>
                 <span id="raceStatus">Race lobby open</span>
               </div>
               <div class="player-list" id="playerList"></div>
+            </div>
+            <div class="extras-menu is-hidden" id="extrasMenu" aria-label="Game extras">
+              <div class="extras-section"><strong>Pet</strong><div class="option-row" id="petOptions"><button data-pet="none" type="button">None</button><button data-pet="dog" type="button">Dog</button><button data-pet="cat" type="button">Cat</button><button data-pet="drone" type="button">Drone</button></div></div>
+              <div class="extras-section"><strong>Weather</strong><div class="option-row" id="weatherOptions"><button data-weather="clear" type="button">Clear</button><button data-weather="rain" type="button">Rain</button><button data-weather="fog" type="button">Fog</button><button data-weather="storm" type="button">Storm</button></div></div>
+              <div class="event-banner" id="eventBanner"></div>
+              <div class="extras-columns"><div><strong>Achievements</strong><div id="achievementList"></div></div><div><strong>Leaderboard</strong><div id="leaderboardList">Open multiplayer to load</div></div></div>
             </div>
           </div>
         </div>
@@ -162,6 +175,6 @@
       </aside>
     </main>
 
-    <script src="script.js?v=41"></script>
+    <script src="script.js?v=42"></script>
   </body>
 </html>
