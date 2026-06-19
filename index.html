@@ -122,6 +122,7 @@
                 </div>
                 <div class="room-active is-hidden" id="roomActive">
                   <span>Room: <strong id="activeRoomCode"></strong></span>
+                  <button class="reaction-button invite-button" id="inviteRoomButton" type="button" title="Copy rewarded invite link">Invite</button>
                   <button class="reaction-button" id="leaveRoomButton" type="button" title="Leave private room">Leave</button>
                 </div>
               </div>
@@ -139,6 +140,7 @@
               <div class="player-list" id="playerList"></div>
             </div>
             <div class="extras-menu is-hidden" id="extrasMenu" aria-label="Game extras">
+              <div class="profile-card"><div class="profile-avatar" id="profileAvatar"></div><div><strong id="profileName">Player</strong><span id="profileStats">Best 0 | 0 wins | 0 coins</span></div></div>
               <div class="extras-section"><strong>Pet</strong><div class="option-row" id="petOptions"><button data-pet="none" type="button">None</button><button data-pet="dog" type="button">Dog</button><button data-pet="cat" type="button">Cat</button><button data-pet="drone" type="button">Drone</button></div></div>
               <div class="extras-section"><strong>Weather</strong><div class="option-row" id="weatherOptions"><button data-weather="clear" type="button">Clear</button><button data-weather="rain" type="button">Rain</button><button data-weather="fog" type="button">Fog</button><button data-weather="storm" type="button">Storm</button></div></div>
               <div class="event-banner" id="eventBanner"></div>
@@ -175,6 +177,6 @@
       </aside>
     </main>
 
-    <script src="script.js?v=43"></script>
+    <script src="script.js?v=44"></script>
   </body>
 </html>

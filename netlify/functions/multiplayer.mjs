@@ -114,6 +114,7 @@ export default async (request) => {
   state.raceWinners ||= {};
   state.rooms ||= {};
   state.leaderboard ||= {};
+  state.referrals ||= {};
   const now = Date.now();
   removeOfflinePlayers(state, now);
 
@@ -171,6 +172,21 @@ export default async (request) => {
     delete state.raceWinners[roomCode];
     await store.setJSON("state", state);
     return json({ ok: true, settings: state.rooms[roomCode] });
+  }
+
+  if (body.action === "referral") {
+    const inviterId = cleanId(body.inviterId);
+    const inviteeId = cleanId(body.inviteeId);
+    if (!inviterId || !inviteeId || inviterId === inviteeId || !state.players[inviteeId] || !state.leaderboard[inviterId]) {
+      return json({ error: "Invalid invite" }, 400);
+    }
+    if (state.referrals[inviteeId]) return json({ error: "Invite already claimed" }, 409);
+    state.referrals[inviteeId] = { inviterId, claimedAt: now };
+    state.gifts[inviterId] ||= [];
+    state.gifts[inviterId].push({ from: state.players[inviteeId].name, amount: 50, sentAt: now });
+    state.gifts[inviterId] = state.gifts[inviterId].slice(-50);
+    await store.setJSON("state", state);
+    return json({ ok: true, reward: 50 });
   }
 
   if (body.action === "gift") {

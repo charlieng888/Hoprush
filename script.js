@@ -46,6 +46,7 @@ const joinRoomButton = document.querySelector("#joinRoomButton");
 const roomActive = document.querySelector("#roomActive");
 const activeRoomCode = document.querySelector("#activeRoomCode");
 const leaveRoomButton = document.querySelector("#leaveRoomButton");
+const inviteRoomButton = document.querySelector("#inviteRoomButton");
 const raceButton = document.querySelector("#raceButton");
 const raceStatus = document.querySelector("#raceStatus");
 const raceTargetSelect = document.querySelector("#raceTargetSelect");
@@ -59,6 +60,9 @@ const weatherButtons = document.querySelectorAll("[data-weather]");
 const eventBanner = document.querySelector("#eventBanner");
 const achievementList = document.querySelector("#achievementList");
 const leaderboardList = document.querySelector("#leaderboardList");
+const profileAvatar = document.querySelector("#profileAvatar");
+const profileName = document.querySelector("#profileName");
+const profileStats = document.querySelector("#profileStats");
 const freezeGunBuyButton = document.querySelector("#freezeGunBuyButton");
 const freezeGunShopButton = document.querySelector("#freezeGunShopButton");
 const freezeButton = document.querySelector("#freezeButton");
@@ -191,6 +195,9 @@ let raceWins = Number(loadSimpleSetting("race-wins", "0"));
 let penguinRescue = 0;
 let latestRoomSettings = { target: 300, map: "meadow", limit: 4 };
 let lastRaceWinAt = 0;
+let invitePlayerId = loadInvitePlayerId();
+let inviteRewardChecked = false;
+let swipeStart = null;
 const activeEvent = eventNames[new Date().getDate() % eventNames.length];
 const doNotClickSound = new Audio("sounds/do-not-click.mp3");
 doNotClickSound.volume = 0.8;
@@ -926,6 +933,9 @@ function renderExtras() {
   petButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.pet === selectedPet));
   weatherButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.weather === selectedWeather));
   eventBanner.textContent = `Today's event: ${activeEvent}`;
+  profileName.textContent = playerName;
+  profileStats.textContent = `Best ${bestScore} | ${raceWins} wins | ${lifetimeCoins} coins collected`;
+  profileAvatar.style.background = (skins[selectedSkinId] || skins.lime).cap;
   achievementList.replaceChildren();
   achievements.forEach((achievement) => {
     const row = document.createElement("div");
@@ -955,7 +965,7 @@ function renderLeaderboard(players = []) {
   leaderboardList.replaceChildren();
   players.slice(0, 8).forEach((entry, index) => {
     const row = document.createElement("div");
-    row.textContent = `${index + 1}. ${entry.name} - ${entry.bestScore}`;
+    row.textContent = `${index + 1}. ${entry.name} - ${entry.bestScore} (${entry.raceWins || 0} wins)`;
     leaderboardList.append(row);
   });
   if (!players.length) leaderboardList.textContent = "No scores yet";
@@ -1024,14 +1034,24 @@ function savePlayerName(value) {
   } catch (error) {
     // The current session still keeps the chosen name when storage is blocked.
   }
+  renderExtras();
 }
 
 function loadRoomCode() {
   try {
+    const linkedRoom = cleanRoomCode(new URLSearchParams(window.location.search).get("room"));
+    if (linkedRoom !== "PUBLIC") return linkedRoom;
     return cleanRoomCode(window.localStorage.getItem("road-hop-rush-room-code"));
   } catch (error) {
     return "PUBLIC";
   }
+}
+
+function loadInvitePlayerId() {
+  try {
+    const value = new URLSearchParams(window.location.search).get("invite") || "";
+    return /^[a-zA-Z0-9-]{8,64}$/.test(value) && value !== playerId ? value : "";
+  } catch (error) { return ""; }
 }
 
 function cleanRoomCode(value) {
@@ -1141,6 +1161,7 @@ async function multiplayerHeartbeat() {
     playerLimitSelect.value = String(latestRoomSettings.limit || 4);
     renderLeaderboard(result.leaderboard || []);
     onlineFriends = result.friends || [];
+    if (invitePlayerId && !inviteRewardChecked) await claimInviteReward();
     if (latestRace && latestRace.winner && latestRace.winner.id === playerId && latestRace.winner.wonAt !== lastRaceWinAt) {
       lastRaceWinAt = latestRace.winner.wonAt;
       raceWins += 1;
@@ -1155,6 +1176,35 @@ async function multiplayerHeartbeat() {
     multiplayerStatus.textContent = error.message;
   } finally {
     multiplayerBusy = false;
+  }
+}
+
+async function claimInviteReward() {
+  inviteRewardChecked = true;
+  try {
+    const result = await multiplayerRequest({ action: "referral", inviterId: invitePlayerId, inviteeId: playerId });
+    if (result.reward > 0) {
+      walletCoins += result.reward;
+      saveWalletCoins(walletCoins);
+      updateHud();
+      updateStatus(gameState, `Friend invite: +${result.reward} coins`);
+    }
+  } catch (error) {
+    if (error.message !== "Invite already claimed") inviteRewardChecked = false;
+  }
+}
+
+async function copyRoomInvite() {
+  if (window.location.protocol === "file:") {
+    multiplayerStatus.textContent = "Invite links work on the Netlify website";
+    return;
+  }
+  const url = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(currentRoomCode)}&invite=${encodeURIComponent(playerId)}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    multiplayerStatus.textContent = "Invite copied - both players earn 50 coins";
+  } catch (error) {
+    multiplayerStatus.textContent = url;
   }
 }
 
@@ -1482,6 +1532,7 @@ function chooseSkin(skinId) {
   selectedSkinId = skinId;
   saveSelectedSkin(skinId);
   updateSkinButtons();
+  renderExtras();
   draw();
 }
 
@@ -1765,9 +1816,12 @@ roomCodeInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") enterRoom(roomCodeInput.value);
 });
 leaveRoomButton.addEventListener("click", leaveRoom);
+inviteRoomButton.addEventListener("click", copyRoomInvite);
 raceButton.addEventListener("click", toggleRaceMode);
 saveRoomSettingsButton.addEventListener("click", saveRoomSettings);
-window.setInterval(multiplayerHeartbeat, 3_000);
+window.setInterval(() => {
+  if (currentRoomCode !== "PUBLIC" || !multiplayerMenu.classList.contains("is-hidden")) multiplayerHeartbeat();
+}, 3_000);
 
 petButtons.forEach((button) => button.addEventListener("click", () => {
   selectedPet = button.dataset.pet;
@@ -1780,6 +1834,22 @@ weatherButtons.forEach((button) => button.addEventListener("click", () => {
   saveSimpleSetting("weather", selectedWeather);
   renderExtras(); draw();
 }));
+
+canvas.addEventListener("pointerdown", (event) => {
+  swipeStart = { x: event.clientX, y: event.clientY };
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  if (!swipeStart) return;
+  const dx = event.clientX - swipeStart.x;
+  const dy = event.clientY - swipeStart.y;
+  swipeStart = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  if (Math.abs(dx) > Math.abs(dy)) hop(dx > 0 ? 1 : -1, 0);
+  else hop(0, dy > 0 ? 1 : -1);
+});
+
+canvas.addEventListener("pointercancel", () => { swipeStart = null; });
 
 skinButtons.forEach((button) => {
   button.addEventListener("click", () => chooseSkin(button.dataset.skin));
