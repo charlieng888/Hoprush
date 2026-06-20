@@ -135,14 +135,20 @@
               </div>
               <div class="race-controls">
                 <button class="shop-button" id="raceButton" type="button">Join 300-point race</button>
+                <button class="shop-button" id="tournamentButton" type="button">Tournament: Off</button>
                 <span id="raceStatus">Race lobby open</span>
               </div>
               <div class="player-list" id="playerList"></div>
             </div>
             <div class="extras-menu is-hidden" id="extrasMenu" aria-label="Game extras">
               <div class="profile-card"><div class="profile-avatar" id="profileAvatar"></div><div><strong id="profileName">Player</strong><span id="profileStats">Best 0 | 0 wins | 0 coins</span></div></div>
-              <div class="extras-section"><strong>Pet</strong><div class="option-row" id="petOptions"><button data-pet="none" type="button">None</button><button data-pet="dog" type="button">Dog</button><button data-pet="cat" type="button">Cat</button><button data-pet="drone" type="button">Drone</button></div></div>
+              <div class="extras-section"><strong>Difficulty</strong><div class="option-row" id="difficultyOptions"><button data-difficulty="easy" type="button">Easy</button><button data-difficulty="normal" type="button">Normal</button><button data-difficulty="extreme" type="button">Extreme</button></div></div>
+              <div class="extras-section"><strong>Player Title</strong><div class="option-row" id="titleOptions"><button data-title="Rookie" type="button">Rookie</button><button data-title="Hopper" type="button">Hopper</button><button data-title="Road King" type="button">Road King</button><button data-title="Champion" type="button">Champion</button></div></div>
+              <div class="extras-section"><strong>Pet</strong><div class="option-row" id="petOptions"><button data-pet="none" type="button">None</button><button data-pet="dog" type="button">Dog</button><button data-pet="cat" type="button">Cat</button><button data-pet="drone" type="button">Drone</button><button id="upgradePetButton" type="button">Upgrade Pet</button></div><span class="extras-note" id="petLevelStatus">Pet level 1</span></div>
               <div class="extras-section"><strong>Weather</strong><div class="option-row" id="weatherOptions"><button data-weather="clear" type="button">Clear</button><button data-weather="rain" type="button">Rain</button><button data-weather="fog" type="button">Fog</button><button data-weather="storm" type="button">Storm</button></div></div>
+              <div class="extras-section"><strong>Rewards</strong><div class="option-row"><button id="mysteryBoxButton" type="button">Mystery Box 25</button><button id="seasonRewardButton" type="button">Claim Season Rewards</button></div><span class="extras-note" id="seasonStatus"></span></div>
+              <div class="extras-section"><strong>Map Creator</strong><div class="option-row"><button data-lane="grass" type="button">+ Grass</button><button data-lane="road" type="button">+ Road</button><button data-lane="river" type="button">+ River</button><button id="clearCustomMapButton" type="button">Clear</button><button id="useCustomMapButton" type="button">Use Map</button></div><span class="extras-note" id="customMapStatus">No custom lanes</span></div>
+              <div class="extras-section"><strong>Replay</strong><div class="option-row"><button id="watchReplayButton" type="button">Watch Last Run</button><button id="shareReplayButton" type="button">Copy Replay Link</button></div></div>
               <div class="event-banner" id="eventBanner"></div>
               <div class="extras-columns"><div><strong>Achievements</strong><div id="achievementList"></div></div><div><strong>Leaderboard</strong><div id="leaderboardList">Open multiplayer to load</div></div></div>
             </div>
@@ -177,6 +183,6 @@
       </aside>
     </main>
 
-    <script src="script.js?v=44"></script>
+    <script src="script.js?v=45"></script>
   </body>
 </html>

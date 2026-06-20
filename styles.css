@@ -319,6 +319,8 @@ canvas {
 .option-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .option-row button { min-height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; background: #242a33; font-size: .72rem; font-weight: 800; }
 .option-row button.is-selected { border-color: var(--lime); color: var(--lime); }
+.option-row button.is-locked { opacity: 0.45; }
+.extras-note { display: block; margin-top: 7px; color: var(--muted); font-size: 0.68rem; font-weight: 700; }
 .event-banner { color: var(--gold); font-size: .78rem; font-weight: 800; }
 .extras-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .extras-columns strong { display: block; margin-bottom: 6px; }

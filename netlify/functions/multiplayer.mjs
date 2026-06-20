@@ -3,6 +3,7 @@ import { getStore } from "@netlify/blobs";
 const onlineWindowMs = 45_000;
 const maxGift = 100;
 const allowedReactions = new Set(["Hi!", "Nice!", "Race me!"]);
+const allowedTitles = new Set(["Rookie", "Hopper", "Road King", "Champion"]);
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -64,6 +65,8 @@ function publicPlayers(state, roomCode) {
       x: Math.max(0, Math.min(11, Number(player.x) || 0)),
       worldRow: Math.max(0, Number(player.worldRow) || 0),
       skin: String(player.skin || "lime").slice(0, 12),
+      title: allowedTitles.has(player.title) ? player.title : "Rookie",
+      tournamentMode: Boolean(player.tournamentMode),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -74,17 +77,30 @@ function updateRace(state, roomCode, now) {
     delete state.raceWinners[roomCode];
   }
   const racers = publicPlayers(state, roomCode).filter((player) => player.inRace);
+  state.tournaments ||= {};
+  state.tournaments[roomCode] ||= { wins: {}, champion: null };
+  const tournament = state.tournaments[roomCode];
+  if (tournament.champion && now - tournament.champion.wonAt > 30_000) state.tournaments[roomCode] = { wins: {}, champion: null };
+  if (!tournament.champion && racers.every((player) => !player.tournamentMode)) state.tournaments[roomCode] = { wins: {}, champion: null };
   const target = (state.rooms[roomCode] || cleanSettings()).target;
   if (!state.raceWinners[roomCode] && racers.length >= 2) {
     const winner = racers.filter((player) => player.raceScore >= target).sort((a, b) => b.raceScore - a.raceScore)[0];
-    if (winner) state.raceWinners[roomCode] = { id: winner.id, name: winner.name, wonAt: now };
+    if (winner) {
+      state.raceWinners[roomCode] = { id: winner.id, name: winner.name, wonAt: now };
+      const tournamentRacers = racers.filter((player) => player.tournamentMode);
+      if (winner.tournamentMode && tournamentRacers.length >= 2 && !state.tournaments[roomCode].champion) {
+        const wins = state.tournaments[roomCode].wins;
+        wins[winner.id] = (wins[winner.id] || 0) + 1;
+        if (wins[winner.id] >= 2) state.tournaments[roomCode].champion = { id: winner.id, name: winner.name, wonAt: now };
+      }
+    }
   }
-  return { target, racers, winner: state.raceWinners[roomCode] || null };
+  return { target, racers, winner: state.raceWinners[roomCode] || null, tournament: state.tournaments[roomCode] };
 }
 
 function publicLeaderboard(state) {
   return Object.entries(state.leaderboard)
-    .map(([id, entry]) => ({ id, name: entry.name, bestScore: Math.max(0, Number(entry.bestScore) || 0), raceWins: Math.max(0, Number(entry.raceWins) || 0) }))
+    .map(([id, entry]) => ({ id, name: entry.name, title: allowedTitles.has(entry.title) ? entry.title : "Rookie", bestScore: Math.max(0, Number(entry.bestScore) || 0), raceWins: Math.max(0, Number(entry.raceWins) || 0) }))
     .sort((a, b) => b.bestScore - a.bestScore || b.raceWins - a.raceWins)
     .slice(0, 20);
 }
@@ -115,6 +131,7 @@ export default async (request) => {
   state.rooms ||= {};
   state.leaderboard ||= {};
   state.referrals ||= {};
+  state.tournaments ||= {};
   const now = Date.now();
   removeOfflinePlayers(state, now);
 
@@ -122,7 +139,8 @@ export default async (request) => {
     const roomCode = cleanRoomCode(body.roomCode);
     if (!roomCode) return json({ error: "Invalid room code" }, 400);
     const settings = state.rooms[roomCode] || cleanSettings();
-    return json({ players: publicPlayers(state, roomCode), race: updateRace(state, roomCode, now), settings, leaderboard: publicLeaderboard(state) });
+    const race = updateRace(state, roomCode, now);
+    return json({ players: publicPlayers(state, roomCode), race, tournament: race.tournament, settings, leaderboard: publicLeaderboard(state) });
   }
 
   if (body.action === "heartbeat") {
@@ -144,6 +162,8 @@ export default async (request) => {
       x: Math.max(0, Math.min(11, Number(body.x) || 0)),
       worldRow: Math.max(0, Number(body.worldRow) || 0),
       skin: String(body.skin || "lime").slice(0, 12),
+      title: allowedTitles.has(body.title) ? body.title : "Rookie",
+      tournamentMode: Boolean(body.tournamentMode),
       lastSeen: now,
     };
     const previous = state.leaderboard[playerId] || {};
@@ -151,6 +171,7 @@ export default async (request) => {
       name: cleanName(body.name),
       bestScore: Math.max(Number(previous.bestScore) || 0, Math.floor(Number(body.bestScore) || 0)),
       raceWins: Math.max(Number(previous.raceWins) || 0, Math.floor(Number(body.raceWins) || 0)),
+      title: allowedTitles.has(body.title) ? body.title : "Rookie",
     };
 
     const gifts = state.gifts[playerId] || [];
@@ -159,7 +180,7 @@ export default async (request) => {
     delete state.reactions[playerId];
     const race = updateRace(state, roomCode, now);
     await store.setJSON("state", state);
-    return json({ players: publicPlayers(state, roomCode), gifts, reactions, race, settings: state.rooms[roomCode], leaderboard: publicLeaderboard(state), friends: publicFriends(state, body.friendIds) });
+    return json({ players: publicPlayers(state, roomCode), gifts, reactions, race, tournament: race.tournament, settings: state.rooms[roomCode], leaderboard: publicLeaderboard(state), friends: publicFriends(state, body.friendIds) });
   }
 
   if (body.action === "settings") {
@@ -170,6 +191,7 @@ export default async (request) => {
     }
     state.rooms[roomCode] = cleanSettings(body.settings);
     delete state.raceWinners[roomCode];
+    delete state.tournaments[roomCode];
     await store.setJSON("state", state);
     return json({ ok: true, settings: state.rooms[roomCode] });
   }

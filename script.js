@@ -49,6 +49,7 @@ const leaveRoomButton = document.querySelector("#leaveRoomButton");
 const inviteRoomButton = document.querySelector("#inviteRoomButton");
 const raceButton = document.querySelector("#raceButton");
 const raceStatus = document.querySelector("#raceStatus");
+const tournamentButton = document.querySelector("#tournamentButton");
 const raceTargetSelect = document.querySelector("#raceTargetSelect");
 const roomMapSelect = document.querySelector("#roomMapSelect");
 const playerLimitSelect = document.querySelector("#playerLimitSelect");
@@ -63,6 +64,19 @@ const leaderboardList = document.querySelector("#leaderboardList");
 const profileAvatar = document.querySelector("#profileAvatar");
 const profileName = document.querySelector("#profileName");
 const profileStats = document.querySelector("#profileStats");
+const difficultyButtons = document.querySelectorAll("[data-difficulty]");
+const titleButtons = document.querySelectorAll("[data-title]");
+const upgradePetButton = document.querySelector("#upgradePetButton");
+const petLevelStatus = document.querySelector("#petLevelStatus");
+const mysteryBoxButton = document.querySelector("#mysteryBoxButton");
+const seasonRewardButton = document.querySelector("#seasonRewardButton");
+const seasonStatus = document.querySelector("#seasonStatus");
+const laneCreatorButtons = document.querySelectorAll("[data-lane]");
+const clearCustomMapButton = document.querySelector("#clearCustomMapButton");
+const useCustomMapButton = document.querySelector("#useCustomMapButton");
+const customMapStatus = document.querySelector("#customMapStatus");
+const watchReplayButton = document.querySelector("#watchReplayButton");
+const shareReplayButton = document.querySelector("#shareReplayButton");
 const freezeGunBuyButton = document.querySelector("#freezeGunBuyButton");
 const freezeGunShopButton = document.querySelector("#freezeGunShopButton");
 const freezeButton = document.querySelector("#freezeButton");
@@ -121,6 +135,13 @@ const achievements = [
   { id: "racewin", label: "Win a race", reward: 100, test: () => raceWins >= 1 },
 ];
 const eventNames = ["Double Coins", "Turbo Day", "Storm Challenge"];
+const difficultySettings = {
+  easy: { speed: 0.72, score: 0.8, label: "Easy" },
+  normal: { speed: 1, score: 1, label: "Normal" },
+  extreme: { speed: 1.55, score: 1.5, label: "Extreme" },
+};
+const titleRequirements = { Rookie: 0, Hopper: 250, "Road King": 1000, Champion: 2500 };
+const seasonTiers = [100, 300, 600, 1000, 1800];
 
 const laneTemplates = [
   { type: "safe", color: "#3a8c56" },
@@ -175,6 +196,8 @@ let shieldInvulnerableMs = 0;
 let magnetTimerMs = 0;
 let speedTimerMs = 0;
 let slowTrafficTimerMs = 0;
+let bossTimerMs = 0;
+let nextBossScore = 500;
 let selectedMap = loadSelectedMap();
 let unlockedSkins = loadUnlockedSkins();
 let playerId = loadPlayerId();
@@ -186,6 +209,19 @@ let raceStartScore = 0;
 let latestRace = null;
 let currentRoomCode = loadRoomCode();
 let selectedPet = loadSimpleSetting("pet", "none");
+let petLevel = Math.max(1, Number(loadSimpleSetting("pet-level", "1")) || 1);
+let selectedDifficulty = difficultySettings[loadSimpleSetting("difficulty", "normal")] ? loadSimpleSetting("difficulty", "normal") : "normal";
+let selectedTitle = loadSimpleSetting("title", "Rookie");
+let customMap = loadJsonSetting("custom-map", []);
+let useCustomMap = loadSimpleSetting("use-custom-map", "false") === "true";
+let seasonClaimed = new Set(loadJsonSetting("season-claimed", []));
+let replayMoves = [];
+let lastReplay = loadSharedReplay() || loadJsonSetting("last-replay", []);
+let replayStartTime = 0;
+let isReplaying = false;
+let replayGeneration = 0;
+let tournamentMode = false;
+let tournament = null;
 let selectedWeather = loadSimpleSetting("weather", "clear");
 let friends = new Set(loadJsonSetting("friends", []));
 let onlineFriends = [];
@@ -195,6 +231,7 @@ let raceWins = Number(loadSimpleSetting("race-wins", "0"));
 let penguinRescue = 0;
 let latestRoomSettings = { target: 300, map: "meadow", limit: 4 };
 let lastRaceWinAt = 0;
+let lastRoundWinnerAt = 0;
 let invitePlayerId = loadInvitePlayerId();
 let inviteRewardChecked = false;
 let swipeStart = null;
@@ -251,6 +288,10 @@ function resetGame() {
   magnetTimerMs = 0;
   speedTimerMs = 0;
   slowTrafficTimerMs = 0;
+  bossTimerMs = 0;
+  nextBossScore = 500;
+  replayMoves = [];
+  replayStartTime = performance.now();
   penguinRescue = selectedSkinId === "penguin" ? 1 : 0;
   if (selectedSkinId === "frog") shieldCharges = 1;
   if (selectedSkinId === "robot") slowTrafficTimerMs = 12_000;
@@ -267,7 +308,8 @@ function createLanes() {
 
 function createLane(template, y) {
   const speedFactor = 1 + Math.min(0.65, completedRows * 0.012);
-  const lane = { ...template, y, speed: template.speed ? template.speed * speedFactor : 0, actors: [], coins: [], powerups: [] };
+  const difficulty = difficultySettings[selectedDifficulty] || difficultySettings.normal;
+  const lane = { ...template, y, speed: template.speed ? template.speed * speedFactor * difficulty.speed : 0, actors: [], coins: [], powerups: [] };
   if (template.type === "road") {
     for (let x = -2; x < columns + 4; x += template.spacing) {
       lane.actors.push({
@@ -275,9 +317,12 @@ function createLane(template, y) {
         width: Math.random() > 0.62 ? 2 : 1.35,
         color: template.vehicle,
         boss: completedRows > 12 && Math.random() < 0.08,
+        kind: completedRows > 18 && Math.random() < 0.08 ? randomItem(["train", "tank"]) : "car",
       });
       const actor = lane.actors[lane.actors.length - 1];
       if (actor.boss) { actor.width = 3.2; actor.color = "#e34f4f"; }
+      if (actor.kind === "train") { actor.width = 4.3; actor.color = "#d84c5f"; }
+      if (actor.kind === "tank") { actor.width = 2.4; actor.color = "#78965c"; }
     }
   }
 
@@ -297,7 +342,7 @@ function createLane(template, y) {
   if (["grass", "safe"].includes(template.type) && y !== playerStart.y && Math.random() < 0.14) {
     lane.powerups.push({
       x: Math.floor(1 + Math.random() * (columns - 2)),
-      type: randomItem(["shield", "magnet", "speed", "slow"]),
+      type: randomItem(["shield", "magnet", "speed", "slow", "mystery"]),
       collected: false,
     });
   }
@@ -339,6 +384,7 @@ function update(delta) {
   magnetTimerMs = Math.max(0, magnetTimerMs - delta);
   speedTimerMs = Math.max(0, speedTimerMs - delta);
   slowTrafficTimerMs = Math.max(0, slowTrafficTimerMs - delta);
+  bossTimerMs = Math.max(0, bossTimerMs - delta);
   shieldInvulnerableMs = Math.max(0, shieldInvulnerableMs - delta);
   if (magnetTimerMs > 0) collectNearbyCoins();
   if (selectedPet !== "none") collectPetCoin();
@@ -387,9 +433,12 @@ function hop(dx, dy) {
   animateHop(dx);
   collectCoin();
   collectPowerup();
+  if (!isReplaying) replayMoves.push({ dx, dy, at: Math.round(performance.now() - replayStartTime) });
   bestRow = Math.max(bestRow, completedRows + playerStart.y - player.y);
   const speedBonus = speedTimerMs > 0 && dy < 0 ? (selectedSkinId === "chicken" ? 15 : 10) : 0;
-  score = Math.max(score, bestRow * 10 + runCoins * 25) + speedBonus;
+  const difficultyScore = (difficultySettings[selectedDifficulty] || difficultySettings.normal).score;
+  score = Math.max(score, Math.floor((bestRow * 10 + runCoins * 25) * difficultyScore)) + speedBonus;
+  if (score >= nextBossScore) startBossRound();
   updateHud();
   if (raceMode) renderRaceStatus();
   beep(360 + bestRow * 12, 0.035, "triangle");
@@ -425,6 +474,13 @@ function createNextLaneTemplates(count, startingRoadRun) {
   let roadRun = startingRoadRun;
 
   for (let index = 0; index < count; index += 1) {
+    if (useCustomMap && customMap.length) {
+      const type = customMap[(completedRows + index) % customMap.length];
+      const source = type === "road" ? roadOptions : type === "river" ? riverOptions : grassOptions;
+      templates.push({ ...randomItem(source) });
+      roadRun = type === "road" ? roadRun + 1 : 0;
+      continue;
+    }
     const mustBreakRoad = roadRun >= maxRoadSection;
     const shouldAddRoad = !mustBreakRoad && Math.random() < 0.55;
     const template = shouldAddRoad
@@ -514,7 +570,7 @@ function awardCoin(coin, playSound = true) {
 
 function collectPetCoin() {
   const lane = lanes[player.y];
-  const coin = lane.coins.find((item) => !item.collected && Math.abs(item.x - player.x) <= 1.25);
+  const coin = lane.coins.find((item) => !item.collected && Math.abs(item.x - player.x) <= 1.25 + petLevel * .45);
   if (coin) awardCoin(coin, false);
 }
 
@@ -526,6 +582,7 @@ function collectPowerup() {
   if (powerup.type === "magnet") magnetTimerMs = 10_000;
   if (powerup.type === "speed") speedTimerMs = 8_000;
   if (powerup.type === "slow") slowTrafficTimerMs = 10_000;
+  if (powerup.type === "mystery") openMysteryBox(false);
   updateEffectBar();
   updateStatus("running", `${powerup.type} power-up`);
   beep(760, 0.08, "triangle");
@@ -566,8 +623,8 @@ function drawLane(lane) {
 }
 
 function drawPowerup(x, y, type) {
-  const colors = { shield: "#59d4ff", magnet: "#ff6fba", speed: "#ffd15c", slow: "#b48cff" };
-  const labels = { shield: "S", magnet: "M", speed: ">", slow: "T" };
+  const colors = { shield: "#59d4ff", magnet: "#ff6fba", speed: "#ffd15c", slow: "#b48cff", mystery: "#f4f7fb" };
+  const labels = { shield: "S", magnet: "M", speed: ">", slow: "T", mystery: "?" };
   const cx = x * tile + tile / 2;
   const cy = y * tile + tile / 2;
   ctx.fillStyle = colors[type];
@@ -618,11 +675,31 @@ function drawVehicle(actor, y, direction) {
   ctx.fillStyle = "#111318";
   ctx.fillRect(x + width * 0.16, top + height - 4, tile * 0.18, 6);
   ctx.fillRect(x + width * 0.68, top + height - 4, tile * 0.18, 6);
+  if (actor.kind === "train") {
+    ctx.fillStyle = "rgba(255,255,255,.75)";
+    for (let offset = tile * .35; offset < width - tile * .35; offset += tile * .65) ctx.fillRect(x + offset, top + tile * .14, tile * .28, tile * .18);
+  }
+  if (actor.kind === "tank") {
+    ctx.fillStyle = "#526a3d";
+    ctx.beginPath(); ctx.arc(x + width * .52, top + height * .42, tile * .24, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(x + width * .5, top + height * .35, direction * tile * .7, tile * .1);
+  }
   if (actor.boss) {
     ctx.fillStyle = "#fff";
     ctx.font = `900 ${tile * 0.18}px Inter`;
     ctx.fillText("BOSS", x + width / 2, top + height * 0.62);
   }
+}
+
+function startBossRound() {
+  bossTimerMs = 15_000;
+  nextBossScore += 500;
+  lanes.filter((lane) => lane.type === "road").forEach((lane, index) => {
+    lane.actors.push({ x: lane.direction > 0 ? -4 : columns + 1, width: index % 2 ? 4.3 : 2.4, color: index % 2 ? "#d84c5f" : "#78965c", kind: index % 2 ? "train" : "tank", boss: true });
+    lane.speed *= 1.15;
+  });
+  updateStatus("running", "BOSS RUSH: trains and tanks!");
+  beep(95, .22, "sawtooth");
 }
 
 function drawRemotePlayers() {
@@ -639,7 +716,7 @@ function drawRemotePlayers() {
     ctx.fillStyle = "#fff";
     ctx.font = `700 ${tile * .12}px Inter`;
     ctx.textAlign = "center";
-    ctx.fillText(item.name, cx, cy - tile * .3);
+    ctx.fillText(`${item.name} [${item.title || "Rookie"}]`, cx, cy - tile * .3);
     ctx.globalAlpha = 1;
   });
 }
@@ -876,6 +953,10 @@ function endGame(reason) {
   cancelAnimationFrame(animationFrame);
   bestScore = Math.max(bestScore, score);
   saveBestScore(bestScore);
+  if (!isReplaying && replayMoves.length) {
+    lastReplay = replayMoves.slice(-120);
+    saveJsonSetting("last-replay", lastReplay);
+  }
   checkAchievements();
   updateHud();
   overlayKicker.textContent = reason;
@@ -903,6 +984,7 @@ function updateEffectBar() {
   if (magnetTimerMs > 0) effects.push(`Magnet ${Math.ceil(magnetTimerMs / 1000)}s`);
   if (speedTimerMs > 0) effects.push(`Speed ${Math.ceil(speedTimerMs / 1000)}s`);
   if (slowTrafficTimerMs > 0) effects.push(`Slow traffic ${Math.ceil(slowTrafficTimerMs / 1000)}s`);
+  if (bossTimerMs > 0) effects.push(`BOSS RUSH ${Math.ceil(bossTimerMs / 1000)}s`);
   effectBar.textContent = effects.length ? effects.join(" | ") : "No power-ups active";
 }
 
@@ -933,15 +1015,103 @@ function renderExtras() {
   petButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.pet === selectedPet));
   weatherButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.weather === selectedWeather));
   eventBanner.textContent = `Today's event: ${activeEvent}`;
-  profileName.textContent = playerName;
+  profileName.textContent = `${playerName} [${selectedTitle}]`;
   profileStats.textContent = `Best ${bestScore} | ${raceWins} wins | ${lifetimeCoins} coins collected`;
   profileAvatar.style.background = (skins[selectedSkinId] || skins.lime).cap;
+  difficultyButtons.forEach((button) => button.classList.toggle("is-selected", button.dataset.difficulty === selectedDifficulty));
+  titleButtons.forEach((button) => {
+    const unlocked = bestScore >= (titleRequirements[button.dataset.title] || 0);
+    button.classList.toggle("is-locked", !unlocked);
+    button.classList.toggle("is-selected", button.dataset.title === selectedTitle);
+  });
+  const petCost = petLevel * 50;
+  petLevelStatus.textContent = `Pet level ${petLevel}/5 - upgrade range for ${petCost} coins`;
+  upgradePetButton.disabled = selectedPet === "none" || petLevel >= 5 || (!hasInfiniteCoins && walletCoins < petCost);
+  customMapStatus.textContent = customMap.length ? `${customMap.join(" > ")} | ${useCustomMap ? "ACTIVE" : "saved"}` : "No custom lanes";
+  const availableTiers = seasonTiers.filter((tier) => bestScore >= tier).length;
+  seasonStatus.textContent = `${seasonClaimed.size}/${seasonTiers.length} claimed | next at ${seasonTiers[availableTiers] || "complete"}`;
+  watchReplayButton.disabled = !lastReplay.length;
+  shareReplayButton.disabled = !lastReplay.length;
   achievementList.replaceChildren();
   achievements.forEach((achievement) => {
     const row = document.createElement("div");
     row.textContent = `${claimedAchievements.has(achievement.id) ? "DONE" : "LOCKED"} ${achievement.label} (+${achievement.reward})`;
     achievementList.append(row);
   });
+}
+
+function openMysteryBox(paid = true) {
+  if (paid && !hasInfiniteCoins && walletCoins < 25) { updateStatus(gameState, "Need 25 coins"); return; }
+  if (paid && !hasInfiniteCoins) walletCoins -= 25;
+  const reward = randomItem(["10 coins", "25 coins", "50 coins", "shield", "ice cubes"]);
+  if (reward.includes("coins")) walletCoins += Number(reward.split(" ")[0]);
+  if (reward === "shield") shieldCharges += 1;
+  if (reward === "ice cubes") { iceCubes += 5; saveIceCubes(); }
+  saveWalletCoins(walletCoins); updateHud(); updateEffectBar(); renderExtras();
+  updateStatus(gameState, `Mystery box: ${reward}`); beep(740, .1, "triangle");
+}
+
+function upgradePet() {
+  if (selectedPet === "none" || petLevel >= 5) return;
+  const cost = petLevel * 50;
+  if (!hasInfiniteCoins && walletCoins < cost) return;
+  if (!hasInfiniteCoins) walletCoins -= cost;
+  petLevel += 1;
+  saveSimpleSetting("pet-level", petLevel); saveWalletCoins(walletCoins); updateHud(); renderExtras();
+}
+
+function chooseTitle(title) {
+  if (bestScore < (titleRequirements[title] || 0)) { updateStatus(gameState, `Unlock at ${titleRequirements[title]} points`); return; }
+  selectedTitle = title; saveSimpleSetting("title", title); renderExtras(); multiplayerHeartbeat();
+}
+
+function claimSeasonRewards() {
+  let reward = 0;
+  seasonTiers.forEach((tier, index) => {
+    if (bestScore >= tier && !seasonClaimed.has(tier)) {
+      seasonClaimed.add(tier); reward += (index + 1) * 25;
+      if (tier === 600) petLevel = Math.min(5, petLevel + 1);
+      if (tier === 1000) unlockedSkins.add("penguin");
+    }
+  });
+  if (!reward) { updateStatus(gameState, "No season rewards ready"); return; }
+  walletCoins += reward; saveWalletCoins(walletCoins); saveSimpleSetting("pet-level", petLevel); saveUnlockedSkins(); saveJsonSetting("season-claimed", [...seasonClaimed]); updateHud(); updateSkinButtons(); renderExtras();
+  updateStatus(gameState, `Season rewards: +${reward} coins`);
+}
+
+function addCustomLane(type) {
+  if (customMap.length >= 12) return;
+  customMap.push(type); saveJsonSetting("custom-map", customMap); renderExtras();
+}
+
+function loadSharedReplay() {
+  try {
+    const encoded = new URLSearchParams(window.location.search).get("replay");
+    if (!encoded) return null;
+    const parsed = JSON.parse(atob(encoded.replace(/-/g, "+").replace(/_/g, "/")));
+    return Array.isArray(parsed) ? parsed.slice(0, 120) : null;
+  } catch (error) { return null; }
+}
+
+function watchReplay() {
+  if (!lastReplay.length) return;
+  replayGeneration += 1;
+  const generation = replayGeneration;
+  isReplaying = true;
+  startGame();
+  lastReplay.forEach((move) => setTimeout(() => {
+    if (generation === replayGeneration && gameState === "running") hop(Number(move.dx) || 0, Number(move.dy) || 0);
+  }, Math.max(0, Number(move.at) || 0)));
+  const duration = Math.max(...lastReplay.map((move) => Number(move.at) || 0), 0);
+  setTimeout(() => { if (generation === replayGeneration) isReplaying = false; }, duration + 500);
+}
+
+async function shareReplay() {
+  if (!lastReplay.length) return;
+  const encoded = btoa(JSON.stringify(lastReplay)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const url = `${window.location.origin}${window.location.pathname}?replay=${encoded}`;
+  try { await navigator.clipboard.writeText(url); updateStatus(gameState, "Replay link copied"); }
+  catch (error) { updateStatus(gameState, "Open the hosted game to share replays"); }
 }
 
 function checkAchievements() {
@@ -965,7 +1135,7 @@ function renderLeaderboard(players = []) {
   leaderboardList.replaceChildren();
   players.slice(0, 8).forEach((entry, index) => {
     const row = document.createElement("div");
-    row.textContent = `${index + 1}. ${entry.name} - ${entry.bestScore} (${entry.raceWins || 0} wins)`;
+    row.textContent = `${index + 1}. ${entry.name} [${entry.title || "Rookie"}] - ${entry.bestScore} (${entry.raceWins || 0} wins)`;
     leaderboardList.append(row);
   });
   if (!players.length) leaderboardList.textContent = "No scores yet";
@@ -1148,11 +1318,14 @@ async function multiplayerHeartbeat() {
       bestScore,
       raceWins,
       friendIds: [...friends],
+      title: selectedTitle,
+      tournamentMode,
     });
     onlinePlayers = result.players || [];
     applyReceivedGifts(result.gifts || []);
     applyReceivedReactions(result.reactions || []);
     latestRace = result.race || null;
+    tournament = result.tournament || null;
     latestRoomSettings = result.settings || latestRoomSettings;
     raceTarget = latestRoomSettings.target || 300;
     if (currentRoomCode !== "PUBLIC" && latestRoomSettings.map && selectedMap !== latestRoomSettings.map) chooseMap(latestRoomSettings.map);
@@ -1167,6 +1340,10 @@ async function multiplayerHeartbeat() {
       raceWins += 1;
       saveSimpleSetting("race-wins", raceWins);
       checkAchievements();
+    }
+    if (latestRace && latestRace.winner && latestRace.winner.wonAt !== lastRoundWinnerAt) {
+      lastRoundWinnerAt = latestRace.winner.wonAt;
+      raceStartScore = score;
     }
     renderOnlinePlayers();
     renderRaceStatus();
@@ -1217,8 +1394,14 @@ function applyReceivedReactions(reactions) {
 function renderRaceStatus() {
   const racers = latestRace ? latestRace.racers || [] : [];
   raceButton.textContent = raceMode ? "Leave race" : `Join ${raceTarget}-point race`;
+  tournamentButton.textContent = `Tournament: ${tournamentMode ? "On" : "Off"}`;
+  if (tournament && tournament.champion) {
+    raceStatus.textContent = `${tournament.champion.name} is tournament champion!`;
+    return;
+  }
   if (latestRace && latestRace.winner) {
-    raceStatus.textContent = `${latestRace.winner.name} won the race!`;
+    const wins = tournament && tournament.wins ? tournament.wins[latestRace.winner.id] || 0 : 0;
+    raceStatus.textContent = tournamentMode ? `${latestRace.winner.name} won round (${wins}/2)` : `${latestRace.winner.name} won the race!`;
     return;
   }
   if (!raceMode) {
@@ -1261,7 +1444,7 @@ function renderOnlinePlayers() {
     const details = document.createElement("div");
     const name = document.createElement("div");
     name.className = "player-name";
-    name.textContent = onlinePlayer.id === playerId ? `${onlinePlayer.name} (You)` : onlinePlayer.name;
+    name.textContent = `${onlinePlayer.name} [${onlinePlayer.title || "Rookie"}]${onlinePlayer.id === playerId ? " (You)" : ""}`;
     const coins = document.createElement("span");
     coins.className = "player-coins";
     coins.textContent = onlinePlayer.id === playerId && hasInfiniteCoins
@@ -1350,6 +1533,13 @@ function toggleRaceMode() {
   multiplayerHeartbeat();
 }
 
+function toggleTournamentMode() {
+  if (currentRoomCode === "PUBLIC") { multiplayerStatus.textContent = "Create or join a private room first"; return; }
+  tournamentMode = !tournamentMode;
+  if (tournamentMode) { raceMode = true; raceStartScore = score; }
+  renderRaceStatus(); multiplayerHeartbeat();
+}
+
 async function giftCoins(recipient) {
   if (walletCoins < giftAmount || multiplayerBusy) return;
   multiplayerBusy = true;
@@ -1379,6 +1569,8 @@ async function giftCoins(recipient) {
       bestScore,
       raceWins,
       friendIds: [...friends],
+      title: selectedTitle,
+      tournamentMode,
     });
     renderOnlinePlayers();
   } catch (error) {
@@ -1770,6 +1962,8 @@ function activateStart(event) {
   if (gameState === "paused") {
     togglePause();
   } else {
+    replayGeneration += 1;
+    isReplaying = false;
     startGame();
   }
 }
@@ -1818,6 +2012,7 @@ roomCodeInput.addEventListener("keydown", (event) => {
 leaveRoomButton.addEventListener("click", leaveRoom);
 inviteRoomButton.addEventListener("click", copyRoomInvite);
 raceButton.addEventListener("click", toggleRaceMode);
+tournamentButton.addEventListener("click", toggleTournamentMode);
 saveRoomSettingsButton.addEventListener("click", saveRoomSettings);
 window.setInterval(() => {
   if (currentRoomCode !== "PUBLIC" || !multiplayerMenu.classList.contains("is-hidden")) multiplayerHeartbeat();
@@ -1828,6 +2023,26 @@ petButtons.forEach((button) => button.addEventListener("click", () => {
   saveSimpleSetting("pet", selectedPet);
   renderExtras(); draw();
 }));
+
+difficultyButtons.forEach((button) => button.addEventListener("click", () => {
+  selectedDifficulty = button.dataset.difficulty;
+  saveSimpleSetting("difficulty", selectedDifficulty);
+  renderExtras();
+}));
+
+titleButtons.forEach((button) => button.addEventListener("click", () => chooseTitle(button.dataset.title)));
+upgradePetButton.addEventListener("click", upgradePet);
+mysteryBoxButton.addEventListener("click", () => openMysteryBox(true));
+seasonRewardButton.addEventListener("click", claimSeasonRewards);
+laneCreatorButtons.forEach((button) => button.addEventListener("click", () => addCustomLane(button.dataset.lane)));
+clearCustomMapButton.addEventListener("click", () => { customMap = []; useCustomMap = false; saveJsonSetting("custom-map", []); saveSimpleSetting("use-custom-map", false); renderExtras(); });
+useCustomMapButton.addEventListener("click", () => {
+  if (!customMap.length) return;
+  useCustomMap = !useCustomMap; saveSimpleSetting("use-custom-map", useCustomMap); renderExtras();
+  updateStatus(gameState, useCustomMap ? "Custom map active" : "Random map active");
+});
+watchReplayButton.addEventListener("click", watchReplay);
+shareReplayButton.addEventListener("click", shareReplay);
 
 weatherButtons.forEach((button) => button.addEventListener("click", () => {
   selectedWeather = button.dataset.weather;
@@ -1876,7 +2091,11 @@ doNotClickButtonThree.addEventListener("click", () => {
 });
 
 pauseButton.addEventListener("click", togglePause);
-restartButton.addEventListener("click", startGame);
+restartButton.addEventListener("click", () => {
+  replayGeneration += 1;
+  isReplaying = false;
+  startGame();
+});
 
 soundButton.addEventListener("click", () => {
   soundOn = !soundOn;
